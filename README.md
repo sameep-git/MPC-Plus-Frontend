@@ -1,1 +1,10 @@
 # MPC-Plus-Frontend
+
+This is the Frontend repo for TCU CS Senior Design Project with The CenterTX institute. We are working on MPC+.
+
+Instructions for first clone of project:
+
+ 1. Make a new folder with any name (ex: SeniorDesign)
+ 2. Go into the new folder and create two folders called frontend and backend.
+ 3. Go into frontend and clone this repo [(Frontend)](https://github.com/sameep-git/MPC-Plus-Frontend)
+ 4. Go into backend and clone this repo [(Backend)](https://github.com/sameep-git/MPC-Plus)
