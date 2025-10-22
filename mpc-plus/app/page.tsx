@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
+import { Navbar } from '../components/ui';
 
 export default function Home() {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -37,29 +38,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="flex justify-between items-center p-6 border-b border-gray-200">
-        <div className="text-2xl font-bold text-purple-900">
-          MPC+
-        </div>
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-sm font-medium">
-              {user ? user.name.charAt(0).toUpperCase() : 'U'}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-gray-900">
-              {user?.name || 'Loading...'}
-            </span>
-            <span className="text-xs text-gray-500 capitalize">
-              {user?.role || 'User'}
-            </span>
-          </div>
-          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </header>
+      <Navbar user={user} />
 
       <main className="p-6">
         {/* Welcome Section */}

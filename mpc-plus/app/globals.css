@@ -7,17 +7,8 @@
   --color-accent-rgb: 200, 29, 37;
   --color-background: #ffffff;
   --color-text: #13070c;
-  --color-purple-900: #420039;
-  --color-purple-800: #5a0052;
-  --color-purple-600: #7c3aed;
 }
 
-@theme inline {
-  --background: var(--color-background);
-  --foreground: var(--color-foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
 html {
   scroll-behavior: smooth;
@@ -29,23 +20,3 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Custom purple theme for buttons and accents */
-.bg-purple-900 {
-  background-color: var(--color-purple-900);
-}
-
-.bg-purple-800 {
-  background-color: var(--color-purple-800);
-}
-
-.bg-purple-600 {
-  background-color: var(--color-purple-600);
-}
-
-.text-purple-900 {
-  color: var(--color-purple-900);
-}
-
-.hover\:bg-purple-800:hover {
-  background-color: var(--color-purple-800);
-}
