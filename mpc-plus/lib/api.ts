@@ -1,4 +1,4 @@
-// API service for MPC+ application
+// API service for MPC Plus application
 // This file contains all API-related functions and types
 
 export interface Machine {

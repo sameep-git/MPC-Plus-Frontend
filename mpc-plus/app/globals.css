@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@theme {
+  --font-family-sans: var(--font-geist-sans);
+  --font-family-mono: var(--font-geist-mono);
+  --font-family-fraunces: var(--font-fraunces);
+}
+
+@utility font-fraunces {
+  font-family: var(--font-fraunces);
+}
+
 :root {
   --color-primary: #420039;
   --color-secondary: #0b3954;
@@ -17,6 +27,5 @@ html {
 body {
   background: var(--color-background);
   color: var(--color-text);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 

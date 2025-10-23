@@ -14,8 +14,8 @@ export default function Navbar({ user }: NavbarProps) {
   return (
     <header className="flex justify-between items-center p-6 border-b border-gray-200 bg-white">
       {/* Logo/Brand */}
-      <div className="text-2xl font-bold text-purple-900">
-        MPC+
+      <div className="text-2xl font-bold text-purple-900 font-fraunces">
+        MPC Plus
       </div>
 
       {/* Navigation Items - For larger projects, this would be more extensive */}
