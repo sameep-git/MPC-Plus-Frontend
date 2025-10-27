@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import UserMenu from './UserMenu';
 import { type User } from '../../lib/api';
 
@@ -14,9 +15,9 @@ export default function Navbar({ user }: NavbarProps) {
   return (
     <header className="flex justify-between items-center p-6 border-b border-gray-200 bg-white">
       {/* Logo/Brand */}
-      <div className="text-2xl font-bold text-purple-900 font-fraunces">
+      <Link href="/" className="text-2xl font-bold text-purple-900 font-fraunces hover:text-purple-700 transition-colors">
         MPC Plus
-      </div>
+      </Link>
 
       {/* Navigation Items - For larger projects, this would be more extensive */}
       <nav className="hidden md:flex items-center space-x-8">

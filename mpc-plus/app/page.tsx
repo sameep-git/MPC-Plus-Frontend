@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
 import { Navbar } from '../components/ui';
 
@@ -80,16 +81,17 @@ export default function Home() {
               <div className="text-gray-500 italic">No machines available</div>
             ) : (
               machines.map((machine) => (
-                <button
+                <Link
                   key={machine.id}
-                  className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative"
+                  href={`/mpc-result?machine=${machine.id}`}
+                  className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
                   title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
                 >
                   {machine.name}
                   {machine.status === 'maintenance' && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
                   )}
-                </button>
+                </Link>
               ))
             )}
           </div>
