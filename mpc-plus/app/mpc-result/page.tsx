@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { MdKeyboardArrowDown, MdChevronLeft, MdChevronRight } from 'react-icons/md';
 import { fetchMachines, fetchUser, handleApiError, type Machine, type User } from '../../lib/api';
 import { Navbar } from '../../components/ui';
+import { UI_CONSTANTS, CALENDAR_CONSTANTS, API_CONSTANTS } from '../../constants';
 
 // Mock MPC result data for demonstration
 interface MPCResult {
@@ -24,8 +26,8 @@ const generateMockResults = (machineId: string, startDate: Date, endDate: Date):
   
   while (currentDate <= endDate) {
     // Randomly generate results for demonstration
-    const hasGeometry = Math.random() > 0.3;
-    const hasBeam = Math.random() > 0.4;
+    const hasGeometry = Math.random() > API_CONSTANTS.PROBABILITIES.GEOMETRY_CHECK;
+    const hasBeam = Math.random() > API_CONSTANTS.PROBABILITIES.BEAM_CHECK;
     
     if (hasGeometry || hasBeam) {
       results.push({
@@ -36,7 +38,7 @@ const generateMockResults = (machineId: string, startDate: Date, endDate: Date):
           geometry: hasGeometry,
           beam: hasBeam,
         },
-        status: Math.random() > 0.1 ? 'passed' : 'warning',
+        status: Math.random() > API_CONSTANTS.PROBABILITIES.WARNING_STATUS ? 'passed' : 'warning',
       });
     }
     
@@ -171,7 +173,7 @@ export default function MPCResultPage() {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
-  const weekDays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS;
 
   if (loading) {
     return (
@@ -198,29 +200,29 @@ export default function MPCResultPage() {
         <div className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              MachineID MPC Results
+              {UI_CONSTANTS.TITLES.MPC_RESULTS}
             </h1>
             <p className="text-gray-600 mb-6 max-w-2xl">
-              Subheading that sets up context, shares more info about the author, or generally gets people psyched to keep reading.
+              {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
             </p>
           </div>
           <button
             onClick={handleGenerateReport}
             className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors"
           >
-            Generate Report
+            {UI_CONSTANTS.BUTTONS.GENERATE_REPORT}
           </button>
         </div>
 
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600">Error loading data: {error}</p>
+            <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
             <button 
               onClick={() => window.location.reload()} 
               className="mt-2 text-red-600 underline hover:text-red-800"
             >
-              Retry
+              {UI_CONSTANTS.BUTTONS.RETRY}
             </button>
           </div>
         )}
@@ -229,7 +231,7 @@ export default function MPCResultPage() {
         <div className="mb-8 space-y-6">
           {/* Machine Selection */}
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Machine:</label>
+            <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.MACHINE}</label>
             <div className="relative">
               <select
                 value={selectedMachine?.id || ''}
@@ -245,21 +247,16 @@ export default function MPCResultPage() {
                   </option>
                 ))}
               </select>
-              <svg 
+              <MdKeyboardArrowDown 
                 className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white pointer-events-none" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              />
             </div>
           </div>
 
           {/* Date Range Selection */}
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">Start Date:</label>
+              <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.START_DATE}</label>
               <input
                 type="date"
                 value={startDate}
@@ -268,7 +265,7 @@ export default function MPCResultPage() {
               />
             </div>
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">End Date:</label>
+              <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.END_DATE}</label>
               <input
                 type="date"
                 value={endDate}
@@ -287,9 +284,7 @@ export default function MPCResultPage() {
               onClick={() => navigateMonth('prev')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <MdChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
             
             <h2 className="text-xl font-semibold text-gray-900">
@@ -300,9 +295,7 @@ export default function MPCResultPage() {
               onClick={() => navigateMonth('next')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <MdChevronRight className="w-5 h-5 text-gray-600" />
             </button>
           </div>
 
@@ -327,7 +320,7 @@ export default function MPCResultPage() {
               return (
                 <div
                   key={uniqueKey}
-                  className="p-2 min-h-[80px] border border-gray-100 hover:bg-gray-50 transition-colors"
+                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 hover:bg-gray-50 transition-colors`}
                 >
                   <div className="text-sm font-medium text-gray-900 mb-1">
                     {dayObj.day}
@@ -337,12 +330,12 @@ export default function MPCResultPage() {
                     <div className="space-y-1">
                       {results.checks.geometry && (
                         <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                          Geometry Check
+                          {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
                         </div>
                       )}
                       {results.checks.beam && (
                         <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                          Beam Check
+                          {UI_CONSTANTS.CHECKS.BEAM_CHECK}
                         </div>
                       )}
                     </div>
@@ -357,21 +350,21 @@ export default function MPCResultPage() {
         {selectedMachine && (
           <div className="mt-8 p-4 bg-gray-50 rounded-lg">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Results Summary for {selectedMachine.name}
+              {UI_CONSTANTS.TITLES.RESULTS_SUMMARY} {selectedMachine.name}
             </h3>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-gray-600">Total Checks:</span>
+                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
                 <span className="ml-2 font-medium">{mpcResults.length}</span>
               </div>
               <div>
-                <span className="text-gray-600">Geometry Checks:</span>
+                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.GEOMETRY_CHECKS}</span>
                 <span className="ml-2 font-medium">
                   {mpcResults.filter(r => r.checks.geometry).length}
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">Beam Checks:</span>
+                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.BEAM_CHECKS}</span>
                 <span className="ml-2 font-medium">
                   {mpcResults.filter(r => r.checks.beam).length}
                 </span>

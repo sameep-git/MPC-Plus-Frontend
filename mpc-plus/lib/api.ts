@@ -1,6 +1,8 @@
 // API service for MPC Plus application
 // This file contains all API-related functions and types
 
+import { API_CONSTANTS, UI_CONSTANTS } from '../constants';
+
 export interface Machine {
   id: string;
   name: string;
@@ -28,7 +30,7 @@ export interface User {
 // Mock API functions - replace with actual API calls
 export const fetchMachines = async (): Promise<Machine[]> => {
   // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.MACHINES));
   
   // Mock data - replace with actual API call
   return [
@@ -64,7 +66,7 @@ export const fetchMachines = async (): Promise<Machine[]> => {
 };
 
 export const fetchUpdates = async (): Promise<Update[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.UPDATES));
   
   return [
     {
@@ -95,7 +97,7 @@ export const fetchUpdates = async (): Promise<Update[]> => {
 };
 
 export const fetchUser = async (): Promise<User> => {
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.USER));
   
   return {
     id: '1',
@@ -110,5 +112,5 @@ export const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'An unexpected error occurred';
+  return UI_CONSTANTS.ERRORS.UNEXPECTED_ERROR;
 };

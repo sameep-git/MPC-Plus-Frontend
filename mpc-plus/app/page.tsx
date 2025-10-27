@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { MdOpenInNew } from 'react-icons/md';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
 import { Navbar } from '../components/ui';
+import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -45,32 +47,32 @@ export default function Home() {
         {/* Welcome Section */}
         <section className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome, {user?.name || 'User'}!
+            {UI_CONSTANTS.TITLES.WELCOME}, {user?.name || UI_CONSTANTS.STATUS.USER}!
           </h1>
           <p className="text-gray-600 mb-6 max-w-2xl">
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.
+            {UI_CONSTANTS.PLACEHOLDERS.WELCOME_DESCRIPTION}
           </p>
           <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
-            View All Results
+            {UI_CONSTANTS.BUTTONS.VIEW_ALL_RESULTS}
           </button>
         </section>
 
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600">Error loading data: {error}</p>
+            <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
             <button 
               onClick={() => window.location.reload()} 
               className="mt-2 text-red-600 underline hover:text-red-800"
             >
-              Retry
+              {UI_CONSTANTS.BUTTONS.RETRY}
             </button>
           </div>
         )}
 
         {/* Today's Machine Updates */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Today's Machine Updates</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">{UI_CONSTANTS.TITLES.TODAYS_UPDATES}</h2>
           <div className="flex flex-wrap gap-4">
             {loading ? (
               // Loading skeleton
@@ -78,12 +80,12 @@ export default function Home() {
                 <div key={index} className="bg-gray-200 animate-pulse h-12 w-48 rounded-lg"></div>
               ))
             ) : machines.length === 0 ? (
-              <div className="text-gray-500 italic">No machines available</div>
+              <div className="text-gray-500 italic">{UI_CONSTANTS.ERRORS.NO_MACHINES}</div>
             ) : (
               machines.map((machine) => (
                 <Link
                   key={machine.id}
-                  href={`/mpc-result?machine=${machine.id}`}
+                  href={`${NAVIGATION.ROUTES.MPC_RESULT}?machine=${machine.id}`}
                   className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
                   title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
                 >
@@ -103,12 +105,12 @@ export default function Home() {
         {/* Latest Updates */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Latest Updates</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">{UI_CONSTANTS.TITLES.LATEST_UPDATES}</h2>
             <p className="text-gray-600 mb-6">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean nunc elit, iaculis in turpis at, porta fringilla quam.
+              {UI_CONSTANTS.PLACEHOLDERS.UPDATES_DESCRIPTION}
             </p>
             <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
-              View All Updates
+              {UI_CONSTANTS.BUTTONS.VIEW_ALL_UPDATES}
             </button>
           </div>
 
@@ -129,9 +131,7 @@ export default function Home() {
                       <h3 className="font-semibold text-gray-900 mb-1">{update.title}</h3>
                       <p className="text-sm text-gray-600">{update.description}</p>
                     </div>
-                    <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
+                    <MdOpenInNew className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
                   </div>
                 </div>
               ))
