@@ -23,7 +23,7 @@ export interface Update {
 export interface User {
   id: string;
   name: string;
-  role: 'admin' | 'operator' | 'viewer';
+  role: 'admin' | 'user';
   avatar?: string;
 }
 
