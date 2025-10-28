@@ -1,6 +1,6 @@
 # MPC-Plus-Frontend
 
-This is the Frontend repo for TCU CS Senior Design Project with The CenterTX institute. We are working on MPC+.
+This is the Frontend repo for TCU CS Senior Design Project with The CenterTX institute. We are working on MPC Plus.
 
 Instructions for first clone of project:
 

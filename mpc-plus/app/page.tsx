@@ -1,64 +1,143 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { MdOpenInNew } from 'react-icons/md';
+import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
+import { Navbar } from '../components/ui';
+import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [updates, setUpdates] = useState<Update[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setError(null);
+        const [machinesData, updatesData, userData] = await Promise.all([
+          fetchMachines(),
+          fetchUpdates(),
+          fetchUser()
+        ]);
+        setMachines(machinesData);
+        setUpdates(updatesData);
+        setUser(userData);
+      } catch (error) {
+        const errorMessage = handleApiError(error);
+        setError(errorMessage);
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <Navbar user={user} />
+
+      <main className="p-6">
+        {/* Welcome Section */}
+        <section className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            {UI_CONSTANTS.TITLES.WELCOME}, {user?.name || UI_CONSTANTS.STATUS.USER}!
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-gray-600 mb-6 max-w-2xl">
+            {UI_CONSTANTS.PLACEHOLDERS.WELCOME_DESCRIPTION}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
+            {UI_CONSTANTS.BUTTONS.VIEW_ALL_RESULTS}
+          </button>
+        </section>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-2 text-red-600 underline hover:text-red-800"
+            >
+              {UI_CONSTANTS.BUTTONS.RETRY}
+            </button>
+          </div>
+        )}
+
+        {/* Today's Machine Updates */}
+        <section className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">{UI_CONSTANTS.TITLES.TODAYS_UPDATES}</h2>
+          <div className="flex flex-wrap gap-4">
+            {loading ? (
+              // Loading skeleton
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="bg-gray-200 animate-pulse h-12 w-48 rounded-lg"></div>
+              ))
+            ) : machines.length === 0 ? (
+              <div className="text-gray-500 italic">{UI_CONSTANTS.ERRORS.NO_MACHINES}</div>
+            ) : (
+              machines.map((machine) => (
+                <Link
+                  key={machine.id}
+                  href={`${NAVIGATION.ROUTES.MPC_RESULT}?machine=${machine.id}`}
+                  className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
+                  title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
+                >
+                  {machine.name}
+                  {machine.status === 'maintenance' && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                  )}
+                </Link>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-gray-200 my-8"></div>
+
+        {/* Latest Updates */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">{UI_CONSTANTS.TITLES.LATEST_UPDATES}</h2>
+            <p className="text-gray-600 mb-6">
+              {UI_CONSTANTS.PLACEHOLDERS.UPDATES_DESCRIPTION}
+            </p>
+            <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
+              {UI_CONSTANTS.BUTTONS.VIEW_ALL_UPDATES}
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {loading ? (
+              // Loading skeleton for updates
+              Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="bg-gray-100 animate-pulse h-20 rounded-lg"></div>
+              ))
+            ) : (
+              updates.map((update) => (
+                <div key={update.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div className="flex items-start space-x-4">
+                    <div className="w-6 h-6 bg-purple-900 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                      <span className="text-white text-xs font-bold">i</span>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 mb-1">{update.title}</h3>
+                      <p className="text-sm text-gray-600">{update.description}</p>
+                    </div>
+                    <MdOpenInNew className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </main>
     </div>
   );
