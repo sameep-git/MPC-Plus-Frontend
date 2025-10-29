@@ -13,6 +13,28 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const handleMachineSelect = (machineId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    // Store the selected machine ID in localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selectedMachineId', machineId);
+      // Navigate to the results page
+      window.location.href = NAVIGATION.ROUTES.MPC_RESULT;
+    }
+  };
+  
+  const handleViewAllResults = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // If there are machines, select the first one by default
+    if (machines.length > 0) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('selectedMachineId', machines[0].id);
+      }
+    }
+    // Navigate to the results page
+    window.location.href = NAVIGATION.ROUTES.MPC_RESULT;
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -52,7 +74,10 @@ export default function Home() {
           <p className="text-gray-600 mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.WELCOME_DESCRIPTION}
           </p>
-          <Button size="lg">
+          <Button 
+            size="lg" 
+            onClick={handleViewAllResults}
+          >
             {UI_CONSTANTS.BUTTONS.VIEW_ALL_RESULTS}
           </Button>
         </section>
@@ -83,19 +108,26 @@ export default function Home() {
             ) : machines.length === 0 ? (
               <div className="text-gray-500 italic">{UI_CONSTANTS.ERRORS.NO_MACHINES}</div>
             ) : (
-              machines.map((machine) => (
-                <Link
-                  key={machine.id}
-                  href={`${NAVIGATION.ROUTES.MPC_RESULT}?machine=${machine.id}`}
-                  className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
-                  title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
-                >
-                  {machine.name}
-                  {machine.status === 'maintenance' && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
-                  )}
-                </Link>
-              ))
+              machines.map((machine) => {
+                const handleMachineClick = (e: React.MouseEvent) => {
+                  handleMachineSelect(machine.id, e);
+                };
+                
+                return (
+                  <Link
+                    key={machine.id}
+                    href={NAVIGATION.ROUTES.MPC_RESULT}
+                    onClick={handleMachineClick}
+                    className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
+                    title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
+                  >
+                    {machine.name}
+                    {machine.status === 'maintenance' && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                    )}
+                  </Link>
+                );
+              })
             )}
           </div>
         </section>
