@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { MdKeyboardArrowDown, MdChevronLeft, MdChevronRight } from 'react-icons/md';
+import { MdKeyboardArrowDown } from 'react-icons/md';
 import { fetchMachines, fetchUser, handleApiError, type Machine, type User } from '../../lib/api';
-import { Navbar } from '../../components/ui';
+import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, API_CONSTANTS } from '../../constants';
 
 // Mock MPC result data for demonstration
@@ -53,9 +53,9 @@ export default function MPCResultPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const today = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
   const [mpcResults, setMpcResults] = useState<MPCResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,12 +84,7 @@ export default function MPCResultPage() {
           setSelectedMachine(machinesData[0]);
         }
         
-        const today = new Date();
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        
-        setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
-        setEndDate(lastDayOfMonth.toISOString().split('T')[0]);
+        // Month and year default to current via initial state
       } catch (error) {
         const errorMessage = handleApiError(error);
         setError(errorMessage);
@@ -103,41 +98,25 @@ export default function MPCResultPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedMachine && startDate && endDate) {
-      const results = generateMockResults(
-        selectedMachine.id,
-        new Date(startDate),
-        new Date(endDate)
-      );
+    if (selectedMachine) {
+      const firstDay = new Date(selectedYear, selectedMonth, 1);
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+      const results = generateMockResults(selectedMachine.id, firstDay, lastDay);
       setMpcResults(results);
     }
-  }, [selectedMachine, startDate, endDate]);
+  }, [selectedMachine, selectedMonth, selectedYear]);
 
   const handleGenerateReport = () => {
     console.log('Generating report for:', {
       machine: selectedMachine?.name,
-      startDate,
-      endDate,
+      month: selectedMonth + 1,
+      year: selectedYear,
       results: mpcResults.length
     });
     // TODO: Implement actual report generation
   };
-
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const newMonth = new Date(currentMonth);
-    if (direction === 'prev') {
-      newMonth.setMonth(newMonth.getMonth() - 1);
-    } else {
-      newMonth.setMonth(newMonth.getMonth() + 1);
-    }
-    setCurrentMonth(newMonth);
-    
-    // Update date range to match the new month
-    const firstDay = new Date(newMonth.getFullYear(), newMonth.getMonth(), 1);
-    const lastDay = new Date(newMonth.getFullYear(), newMonth.getMonth() + 1, 0);
-    setStartDate(firstDay.toISOString().split('T')[0]);
-    setEndDate(lastDay.toISOString().split('T')[0]);
-  };
+  
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -169,9 +148,7 @@ export default function MPCResultPage() {
     return mpcResults.find(result => result.date === dateStr);
   };
 
-  const formatMonthYear = (date: Date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  };
+  // Format helpers not needed; using month/year state directly
 
   const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS;
 
@@ -206,24 +183,22 @@ export default function MPCResultPage() {
               {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
             </p>
           </div>
-          <button
-            onClick={handleGenerateReport}
-            className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors"
-          >
+          <Button onClick={handleGenerateReport} size="lg">
             {UI_CONSTANTS.BUTTONS.GENERATE_REPORT}
-          </button>
+          </Button>
         </div>
 
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
-            <button 
+            <Button 
               onClick={() => window.location.reload()} 
-              className="mt-2 text-red-600 underline hover:text-red-800"
+              variant="text"
+              className="mt-2 text-red-600 hover:text-red-800"
             >
               {UI_CONSTANTS.BUTTONS.RETRY}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -253,50 +228,55 @@ export default function MPCResultPage() {
             </div>
           </div>
 
-          {/* Date Range Selection */}
+          {/* Month/Year Selection */}
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.START_DATE}</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+              <label className="text-sm font-medium text-gray-700">Month</label>
+              <div className="relative">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {monthNames.map((name, idx) => (
+                    <option key={name} value={idx}>{name}</option>
+                  ))}
+                </select>
+                <MdKeyboardArrowDown 
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" 
+                />
+              </div>
             </div>
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.END_DATE}</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+              <label className="text-sm font-medium text-gray-700">Year</label>
+              <div className="relative">
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {Array.from({ length: 11 }).map((_, i) => {
+                    const y = today.getFullYear() - 5 + i;
+                    return (
+                      <option key={y} value={y}>{y}</option>
+                    );
+                  })}
+                </select>
+                <MdKeyboardArrowDown 
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" 
+                />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Calendar View */}
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          {/* Month Navigation */}
-          <div className="flex justify-between items-center mb-6">
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <MdChevronLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            
+          {/* Month/Year Heading */}
+          <div className="flex justify-center items-center mb-6">
             <h2 className="text-xl font-semibold text-gray-900">
-              {formatMonthYear(currentMonth)}
+              {monthNames[selectedMonth]} {selectedYear}
             </h2>
-            
-            <button
-              onClick={() => navigateMonth('next')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <MdChevronRight className="w-5 h-5 text-gray-600" />
-            </button>
           </div>
 
           {/* Calendar Grid */}
@@ -309,7 +289,7 @@ export default function MPCResultPage() {
             ))}
             
             {/* Calendar days */}
-            {getDaysInMonth(currentMonth).map((dayObj, index) => {
+            {getDaysInMonth(new Date(selectedYear, selectedMonth, 1)).map((dayObj, index) => {
               if (dayObj === null) {
                 return <div key={`empty-${index}`} className="p-2"></div>;
               }
