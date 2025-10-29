@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { MdOpenInNew } from 'react-icons/md';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
-import { Navbar } from '../components/ui';
+import { Navbar, Button } from '../components/ui';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
@@ -52,21 +52,22 @@ export default function Home() {
           <p className="text-gray-600 mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.WELCOME_DESCRIPTION}
           </p>
-          <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
+          <Button size="lg">
             {UI_CONSTANTS.BUTTONS.VIEW_ALL_RESULTS}
-          </button>
+          </Button>
         </section>
 
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-2 text-red-600 underline hover:text-red-800"
+            <Button 
+              onClick={() => window.location.reload()}
+              variant="text"
+              className="mt-2 text-red-600 hover:text-red-800"
             >
               {UI_CONSTANTS.BUTTONS.RETRY}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -109,9 +110,9 @@ export default function Home() {
             <p className="text-gray-600 mb-6">
               {UI_CONSTANTS.PLACEHOLDERS.UPDATES_DESCRIPTION}
             </p>
-            <button className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors">
+            <Button size="lg">
               {UI_CONSTANTS.BUTTONS.VIEW_ALL_UPDATES}
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-4">
