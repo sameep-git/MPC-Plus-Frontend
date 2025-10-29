@@ -68,6 +68,7 @@ export const fetchMachines = async (): Promise<Machine[]> => {
 export const fetchUpdates = async (): Promise<Update[]> => {
   await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.UPDATES));
   
+  // Mock data - replace with actual API call
   return [
     {
       id: '1',
@@ -99,6 +100,7 @@ export const fetchUpdates = async (): Promise<Update[]> => {
 export const fetchUser = async (): Promise<User> => {
   await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.USER));
   
+  // Mock data - replace with actual API call
   return {
     id: '1',
     name: 'Stephen',

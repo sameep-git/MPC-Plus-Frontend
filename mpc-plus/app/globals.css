@@ -11,7 +11,7 @@
 }
 
 :root {
-  --color-primary: #420039;
+  --color-primary: #420039; /* If we add themes it should change this color */
   --color-secondary: #0b3954;
   --color-accent: #c81d25;
   --color-accent-rgb: 200, 29, 37;

@@ -19,8 +19,8 @@ export default function Navbar({ user }: NavbarProps) {
       <Link href={NAVIGATION.ROUTES.HOME} className="text-2xl font-bold text-purple-900 font-fraunces hover:text-purple-700 transition-colors">
         MPC Plus
       </Link>
-
-      {/* Navigation Items - For larger projects, this would be more extensive */}
+      
+      {/* Navigation Links */}
       <nav className="hidden md:flex items-center space-x-8">
         <Link href={NAVIGATION.ROUTES.HOME} className="text-gray-600 hover:text-gray-900 transition-colors">
           Dashboard

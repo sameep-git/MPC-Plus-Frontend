@@ -25,10 +25,10 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Directory structure:
 
-```/app```: This is where the main source code is stored for all of the pages that you can see on the website. A folder inside of this directory is a different route with the name of the folder. Ex: ```/mpc-result``` is a folder inside with ```page.jsx```, so when you go to ```http://localhost:3000/mpc-result```, it will load that ```page.jsx```. Verce;
+```/app```: This is where the main source code is stored for all of the pages that you can see on the website. A folder inside of this directory is a different route with the name of the folder. Ex: ```/mpc-result``` is a folder inside with ```page.tsx```, so when you go to [http://localhost:3000/mpc-result](http://localhost:3000/mpc-result), it will load that ```page.tsx``` in ```mpc-result/```.
 
 ```/components```: This is where the source code for the components is stored, ex: Navbar, UserMenu, Button, etc. to make sure our product is maintainable and extensible.
 
 ```/constants```: This is where we store all the text or numbers that are constant and don't need to be changed or follow a certain pattern. Ex: If we want to change our product name in the future, we won't have to find all of the different times we have written our old product name, we just have to edit the constant in the folder and it will change the name automatically throughout the website.
 
-
+```/lib```: This folder contains the API requests made using ```api.ts``` for getting updated data for the website.
