@@ -272,11 +272,43 @@ export default function MPCResultPage() {
 
         {/* Calendar View */}
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          {/* Month/Year Heading */}
-          <div className="flex justify-center items-center mb-6">
+          {/* Month/Year Heading with Navigation */}
+          <div className="flex justify-between items-center mb-6 px-4">
+            <button 
+              onClick={() => {
+                if (selectedMonth === 0) {
+                  setSelectedMonth(11);
+                  setSelectedYear(prev => prev - 1);
+                } else {
+                  setSelectedMonth(prev => prev - 1);
+                }
+              }}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="Previous month"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
             <h2 className="text-xl font-semibold text-gray-900">
               {monthNames[selectedMonth]} {selectedYear}
             </h2>
+            <button 
+              onClick={() => {
+                if (selectedMonth === 11) {
+                  setSelectedMonth(0);
+                  setSelectedYear(prev => prev + 1);
+                } else {
+                  setSelectedMonth(prev => prev + 1);
+                }
+              }}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="Next month"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
 
           {/* Calendar Grid */}
