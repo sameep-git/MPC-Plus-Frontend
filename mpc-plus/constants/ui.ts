@@ -63,7 +63,7 @@ export const UI_CONSTANTS = {
 export const NAVIGATION = {
   ROUTES: {
     HOME: '/',
-    MPC_RESULT: '/mpc-result',
+    MPC_RESULT: '/results',
   },
   LINKS: {
     DASHBOARD: '#',
