@@ -71,6 +71,7 @@ export const NAVIGATION = {
   ROUTES: {
     HOME: '/',
     MPC_RESULT: '/results',
+    RESULT_DETAIL: '/result-detail',
   },
   LINKS: {
     DASHBOARD: '#',
