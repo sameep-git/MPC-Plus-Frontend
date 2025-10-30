@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { MdOpenInNew } from 'react-icons/md';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
 import { Navbar, Button, UpdateCard } from '../components/ui';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';

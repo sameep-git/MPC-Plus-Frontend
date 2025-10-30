@@ -1,4 +1,4 @@
-import { MdOpenInNew, MdInfo, MdWarning, MdError, MdCreate } from 'react-icons/md';
+import { MdOpenInNew, MdInfo, MdWarning, MdCreate } from 'react-icons/md';
 import { UI_CONSTANTS } from '../../constants';
 
 interface UpdateCardProps {
