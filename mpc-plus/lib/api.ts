@@ -16,7 +16,7 @@ export interface Update {
   title: string;
   description: string;
   date: string;
-  type: 'data' | 'threshold' | 'alert' | 'maintenance';
+  type: 'info' | 'signoff' | 'threshold';
   priority?: 'low' | 'medium' | 'high';
 }
 
@@ -75,15 +75,15 @@ export const fetchUpdates = async (): Promise<Update[]> => {
       title: 'New MPC Data for 10/14',
       description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
       date: '2024-10-14',
-      type: 'data',
+      type: 'info',
       priority: 'medium'
     },
     {
       id: '2',
-      title: 'New MPC Data for 10/13',
+      title: 'Sign-off missing for Machine 2',
       description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
       date: '2024-10-13',
-      type: 'data',
+      type: 'signoff',
       priority: 'low'
     },
     {
