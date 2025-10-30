@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { MdOpenInNew } from 'react-icons/md';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
-import { Navbar, Button } from '../components/ui';
+import { Navbar, Button, UpdateCard } from '../components/ui';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
@@ -155,18 +155,13 @@ export default function Home() {
               ))
             ) : (
               updates.map((update) => (
-                <div key={update.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start space-x-4">
-                    <div className="w-6 h-6 bg-purple-900 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                      <span className="text-white text-xs font-bold">i</span>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 mb-1">{update.title}</h3>
-                      <p className="text-sm text-gray-600">{update.description}</p>
-                    </div>
-                    <MdOpenInNew className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
-                  </div>
-                </div>
+                <UpdateCard
+                  key={update.id}
+                  title={update.title}
+                  description={update.description}
+                  iconType={update.type as keyof typeof UI_CONSTANTS.UPDATE_ICON_TYPE || 'INFO'}
+                  onClick={() => {/* Handle click event */}}
+                />
               ))
             )}
           </div>

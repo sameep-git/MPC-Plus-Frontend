@@ -50,7 +50,14 @@ export const UI_CONSTANTS = {
     GEOMETRY_CHECK: 'Geometry Check',
     BEAM_CHECK: 'Beam Check',
   },
-  
+
+  // Update card icons
+  UPDATE_ICON_TYPE: {
+    INFO: 'INFO',
+    SIGNOFF: 'SIGNOFF',
+    THRESHOLD: 'THRESHOLD',
+  },
+
   // Summary labels
   SUMMARY: {
     TOTAL_CHECKS: 'Total Checks:',
