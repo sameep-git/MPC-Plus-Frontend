@@ -10,7 +10,8 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend, 
-  ResponsiveContainer 
+  ResponsiveContainer,
+  ReferenceArea
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
@@ -101,6 +102,12 @@ export default function ResultDetailPage() {
   const [calendarMonth, setCalendarMonth] = useState<number>(graphDateRange.end.getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(graphDateRange.end.getFullYear());
   const [selectedCalendarDates, setSelectedCalendarDates] = useState<Set<string>>(new Set());
+
+  // Threshold settings for graph shading
+  const [thresholdEnabled, setThresholdEnabled] = useState<boolean>(true);
+  const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(16.67); // 1/6 = 16.67%
+  const [thresholdBottomPercent, setThresholdBottomPercent] = useState<number>(16.67); // 1/6 = 16.67%
+  const [thresholdColor, setThresholdColor] = useState<string>('#fef3c7'); // Default: amber-100
 
   // Mock check results
   const [checkResults] = useState<CheckResult[]>([
@@ -297,6 +304,27 @@ export default function ResultDetailPage() {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
     'July', 'August', 'September', 'October', 'November', 'December'];
 
+  // Calculate Y-axis domain based on selected metric
+  const getYAxisDomain = (): [number, number] => {
+    if (selectedMetric?.includes('Output Change')) {
+      return [-6, 6];
+    } else if (selectedMetric?.includes('Uniformity Change')) {
+      return [-5, 5];
+    } else if (selectedMetric?.includes('Center Shift')) {
+      return [-4, 4];
+    }
+    return [-6, 6];
+  };
+
+  // Calculate threshold values for shading
+  const getThresholdValues = () => {
+    const [min, max] = getYAxisDomain();
+    const range = max - min;
+    const topThreshold = max - (range * thresholdTopPercent / 100);
+    const bottomThreshold = min + (range * thresholdBottomPercent / 100);
+    return { topThreshold, bottomThreshold, min, max };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -451,7 +479,7 @@ export default function ResultDetailPage() {
               </div>
               
               {/* Graph */}
-              <div className="h-64 mb-4">
+              <div className="h-96 mb-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={graphData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -461,15 +489,7 @@ export default function ResultDetailPage() {
                       style={{ fontSize: '12px' }}
                     />
                     <YAxis 
-                      domain={
-                        selectedMetric?.includes('Output Change') 
-                          ? [-6, 6]
-                          : selectedMetric?.includes('Uniformity Change')
-                          ? [-5, 5]
-                          : selectedMetric?.includes('Center Shift')
-                          ? [-4, 4]
-                          : [-6, 6]
-                      }
+                      domain={getYAxisDomain()}
                       stroke="#6b7280"
                       style={{ fontSize: '12px' }}
                     />
@@ -480,6 +500,27 @@ export default function ResultDetailPage() {
                         borderRadius: '8px'
                       }}
                     />
+                    {thresholdEnabled && (() => {
+                      const { topThreshold, bottomThreshold, min, max } = getThresholdValues();
+                      return (
+                        <>
+                          {/* Top threshold shading */}
+                          <ReferenceArea
+                            y1={topThreshold}
+                            y2={max}
+                            fill={thresholdColor}
+                            fillOpacity={0.3}
+                          />
+                          {/* Bottom threshold shading */}
+                          <ReferenceArea
+                            y1={min}
+                            y2={bottomThreshold}
+                            fill={thresholdColor}
+                            fillOpacity={0.3}
+                          />
+                        </>
+                      );
+                    })()}
                     {selectedMetric ? (
                       <Line 
                         type="monotone" 
@@ -527,6 +568,73 @@ export default function ResultDetailPage() {
                     )}
                   </LineChart>
                 </ResponsiveContainer>
+              </div>
+              
+              {/* Threshold Controls */}
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-3">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={thresholdEnabled}
+                    onChange={(e) => setThresholdEnabled(e.target.checked)}
+                    className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
+                  />
+                  <label className="text-sm font-medium text-gray-700">Enable Threshold Shading</label>
+                </div>
+                {thresholdEnabled && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Top Threshold (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={thresholdTopPercent}
+                          onChange={(e) => setThresholdTopPercent(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Bottom Threshold (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={thresholdBottomPercent}
+                          onChange={(e) => setThresholdBottomPercent(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Shading Color
+                      </label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="color"
+                          value={thresholdColor}
+                          onChange={(e) => setThresholdColor(e.target.value)}
+                          className="h-8 w-16 border border-gray-300 rounded cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={thresholdColor}
+                          onChange={(e) => setThresholdColor(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          placeholder="#fef3c7"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               
               {/* Graph Legend/Controls */}
