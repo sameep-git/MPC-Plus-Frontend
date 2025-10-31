@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { MdKeyboardArrowDown } from 'react-icons/md';
 import { fetchMachines, fetchUser, handleApiError, type Machine, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
@@ -50,6 +50,7 @@ const generateMockResults = (machineId: string, startDate: Date, endDate: Date):
 
 export default function MPCResultPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -147,6 +148,15 @@ export default function MPCResultPage() {
     
     const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
     return mpcResults.find(result => result.date === dateStr);
+  };
+
+  const handleDateClick = (dayObj: { day: number; month: number; year: number }) => {
+    const results = getResultsForDate(dayObj);
+    if (results) {
+      // Navigate to detail page with the date as a query parameter
+      const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
+      router.push(`/result-detail?date=${dateStr}`);
+    }
   };
 
   // Format helpers not needed; using month/year state directly
@@ -329,11 +339,17 @@ export default function MPCResultPage() {
               
               const results = getResultsForDate(dayObj);
               const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
+              const hasResults = results && (results.checks.geometry || results.checks.beam);
               
               return (
                 <div
                   key={uniqueKey}
-                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 hover:bg-gray-50 transition-colors`}
+                  onClick={() => hasResults && handleDateClick(dayObj)}
+                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${
+                    hasResults 
+                      ? 'hover:bg-gray-50 cursor-pointer hover:border-purple-300' 
+                      : ''
+                  }`}
                 >
                   <div className="text-sm font-medium text-gray-900 mb-1">
                     {dayObj.day}
