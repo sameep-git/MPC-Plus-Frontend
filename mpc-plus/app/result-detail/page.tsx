@@ -12,7 +12,7 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
-import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription } from 'react-icons/md';
+import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS } from '../../constants';
@@ -41,17 +41,29 @@ interface GraphDataPoint {
   line3: number;
 }
 
-// Generate mock graph data
-const generateGraphData = (startDate: Date, endDate: Date): GraphDataPoint[] => {
+// Generate mock graph data for a specific metric
+const generateGraphData = (startDate: Date, endDate: Date, metricName?: string): GraphDataPoint[] => {
   const data: GraphDataPoint[] = [];
   const currentDate = new Date(startDate);
   
   while (currentDate <= endDate) {
+    // Generate data based on metric type or random if no metric specified
+    let value = Math.random() * 12 - 6;
+    
+    // Adjust value range based on metric type
+    if (metricName?.includes('Output Change')) {
+      value = Math.random() * 10 - 5; // -5 to 5 range
+    } else if (metricName?.includes('Uniformity Change')) {
+      value = Math.random() * 8 - 4; // -4 to 4 range
+    } else if (metricName?.includes('Center Shift')) {
+      value = Math.random() * 6 - 3; // -3 to 3 range
+    }
+    
     data.push({
       date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      line1: Math.random() * 12 - 6,
-      line2: Math.random() * 12 - 6,
-      line3: Math.random() * 12 - 6,
+      line1: value,
+      line2: metricName ? value + (Math.random() * 2 - 1) : Math.random() * 12 - 6, // Show related data if metric selected
+      line3: metricName ? value + (Math.random() * 2 - 1) : Math.random() * 12 - 6,
     });
     currentDate.setDate(currentDate.getDate() + 1);
   }
@@ -76,6 +88,7 @@ export default function ResultDetailPage() {
     line2: true,
     line3: true,
   });
+  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   
   // Date range for graph
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
@@ -168,8 +181,8 @@ export default function ResultDetailPage() {
   }, []);
 
   useEffect(() => {
-    setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end));
-  }, [graphDateRange.start.getTime(), graphDateRange.end.getTime()]);
+    setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetric || undefined));
+  }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetric]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -378,6 +391,18 @@ export default function ResultDetailPage() {
                                     </div>
                                   )}
                                   <span className="text-sm text-gray-900">{metric.name}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedMetric(metric.name);
+                                    }}
+                                    className={`p-1 rounded hover:bg-gray-100 transition-colors ${
+                                      selectedMetric === metric.name ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
+                                    }`}
+                                    title={`Show graph for ${metric.name}`}
+                                  >
+                                    <MdShowChart className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </td>
                               <td className="py-2 px-3 text-sm text-gray-600">{metric.thresholds || '-'}</td>
@@ -399,14 +424,29 @@ export default function ResultDetailPage() {
             <div className="border border-gray-200 rounded-lg p-4">
               {/* Graph Header */}
               <div className="mb-4 flex items-center justify-between">
-                <div className="relative">
-                  <select className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500">
-                    <option>Add Data Line</option>
-                    <option>Output Change (%)</option>
-                    <option>Uniformity Change (%)</option>
-                    <option>Center Shift</option>
-                  </select>
-                  <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                <div>
+                  {selectedMetric ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium text-gray-900">Showing:</span>
+                      <span className="text-sm text-purple-600 font-semibold">{selectedMetric}</span>
+                      <button
+                        onClick={() => setSelectedMetric(null)}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <option>Add Data Line</option>
+                        <option>Output Change (%)</option>
+                        <option>Uniformity Change (%)</option>
+                        <option>Center Shift</option>
+                      </select>
+                      <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -421,7 +461,15 @@ export default function ResultDetailPage() {
                       style={{ fontSize: '12px' }}
                     />
                     <YAxis 
-                      domain={[-6, 6]}
+                      domain={
+                        selectedMetric?.includes('Output Change') 
+                          ? [-6, 6]
+                          : selectedMetric?.includes('Uniformity Change')
+                          ? [-5, 5]
+                          : selectedMetric?.includes('Center Shift')
+                          ? [-4, 4]
+                          : [-6, 6]
+                      }
                       stroke="#6b7280"
                       style={{ fontSize: '12px' }}
                     />
@@ -432,71 +480,87 @@ export default function ResultDetailPage() {
                         borderRadius: '8px'
                       }}
                     />
-                    <Legend />
-                    {graphDataLines.line1 && (
+                    {selectedMetric ? (
                       <Line 
                         type="monotone" 
                         dataKey="line1" 
-                        stroke="#1e40af" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                        name="Line 1"
+                        stroke="#420039" 
+                        strokeWidth={3}
+                        dot={{ r: 5 }}
+                        name={selectedMetric}
+                        activeDot={{ r: 7 }}
                       />
-                    )}
-                    {graphDataLines.line2 && (
-                      <Line 
-                        type="monotone" 
-                        dataKey="line2" 
-                        stroke="#3b82f6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                        name="Line 2"
-                      />
-                    )}
-                    {graphDataLines.line3 && (
-                      <Line 
-                        type="monotone" 
-                        dataKey="line3" 
-                        stroke="#22c55e" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                        name="Line 3"
-                      />
+                    ) : (
+                      <>
+                        <Legend />
+                        {graphDataLines.line1 && (
+                          <Line 
+                            type="monotone" 
+                            dataKey="line1" 
+                            stroke="#1e40af" 
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            name="Line 1"
+                          />
+                        )}
+                        {graphDataLines.line2 && (
+                          <Line 
+                            type="monotone" 
+                            dataKey="line2" 
+                            stroke="#3b82f6" 
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            name="Line 2"
+                          />
+                        )}
+                        {graphDataLines.line3 && (
+                          <Line 
+                            type="monotone" 
+                            dataKey="line3" 
+                            stroke="#22c55e" 
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            name="Line 3"
+                          />
+                        )}
+                      </>
                     )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
               
               {/* Graph Legend/Controls */}
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={graphDataLines.line1}
-                    onChange={(e) => setGraphDataLines(prev => ({ ...prev, line1: e.target.checked }))}
-                    className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-gray-700">Line 1</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={graphDataLines.line2}
-                    onChange={(e) => setGraphDataLines(prev => ({ ...prev, line2: e.target.checked }))}
-                    className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-gray-700">Line 2</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={graphDataLines.line3}
-                    onChange={(e) => setGraphDataLines(prev => ({ ...prev, line3: e.target.checked }))}
-                    className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm text-gray-700">Line 3</span>
-                </label>
-              </div>
+              {!selectedMetric && (
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={graphDataLines.line1}
+                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line1: e.target.checked }))}
+                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Line 1</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={graphDataLines.line2}
+                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line2: e.target.checked }))}
+                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Line 2</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={graphDataLines.line3}
+                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line3: e.target.checked }))}
+                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Line 3</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Date Range Selector and Calendar */}
