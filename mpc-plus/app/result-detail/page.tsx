@@ -15,7 +15,7 @@ import {
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
-import { UI_CONSTANTS } from '../../constants';
+import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 
 // Mock data for check results
 interface CheckMetric {
@@ -36,35 +36,38 @@ interface CheckResult {
 // Mock data for graph
 interface GraphDataPoint {
   date: string;
-  line1: number;
-  line2: number;
-  line3: number;
+  [key: string]: string | number; // Allow dynamic metric keys
 }
 
-// Generate mock graph data for a specific metric
-const generateGraphData = (startDate: Date, endDate: Date, metricName?: string): GraphDataPoint[] => {
+// Generate mock graph data for multiple metrics
+const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<string>): GraphDataPoint[] => {
   const data: GraphDataPoint[] = [];
   const currentDate = new Date(startDate);
   
   while (currentDate <= endDate) {
-    // Generate data based on metric type or random if no metric specified
-    let value = Math.random() * 12 - 6;
-    
-    // Adjust value range based on metric type
-    if (metricName?.includes('Output Change')) {
-      value = Math.random() * 10 - 5; // -5 to 5 range
-    } else if (metricName?.includes('Uniformity Change')) {
-      value = Math.random() * 8 - 4; // -4 to 4 range
-    } else if (metricName?.includes('Center Shift')) {
-      value = Math.random() * 6 - 3; // -3 to 3 range
-    }
-    
-    data.push({
+    const dataPoint: any = {
       date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      line1: value,
-      line2: metricName ? value + (Math.random() * 2 - 1) : Math.random() * 12 - 6, // Show related data if metric selected
-      line3: metricName ? value + (Math.random() * 2 - 1) : Math.random() * 12 - 6,
+    };
+    
+    // Generate data for each selected metric
+    selectedMetrics.forEach((metricName) => {
+      // Create a sanitized key for the metric (remove special characters)
+      const key = metricName.replace(/[^a-zA-Z0-9]/g, '_');
+      
+      // Generate value based on metric type
+      let value = Math.random() * 12 - 6;
+      if (metricName.includes('Output Change')) {
+        value = Math.random() * 10 - 5; // -5 to 5 range
+      } else if (metricName.includes('Uniformity Change')) {
+        value = Math.random() * 8 - 4; // -4 to 4 range
+      } else if (metricName.includes('Center Shift')) {
+        value = Math.random() * 6 - 3; // -3 to 3 range
+      }
+      
+      dataPoint[key] = value;
     });
+    
+    data.push(dataPoint);
     currentDate.setDate(currentDate.getDate() + 1);
   }
   
@@ -83,8 +86,9 @@ export default function ResultDetailPage() {
   const selectedDate = dateParam ? new Date(dateParam) : new Date();
   
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
-  const [selectedMetric, setSelectedMetric] = useState<string>('Output Change (%)');
+  const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
   const [showGraph, setShowGraph] = useState<boolean>(false);
+  const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
   
   // Date range for graph
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
@@ -99,9 +103,9 @@ export default function ResultDetailPage() {
   const [selectedCalendarDates, setSelectedCalendarDates] = useState<Set<string>>(new Set());
 
   // Threshold settings for graph shading
-  const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(16.67); // 1/6 = 16.67%
-  const [thresholdBottomPercent, setThresholdBottomPercent] = useState<number>(16.67); // 1/6 = 16.67%
-  const [thresholdColor, setThresholdColor] = useState<string>('#fef3c7'); // Default: amber-100
+  const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT);
+  const [thresholdBottomPercent, setThresholdBottomPercent] = useState<number>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT);
+  const [thresholdColor, setThresholdColor] = useState<string>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR);
 
   // Mock check results
   const [checkResults] = useState<CheckResult[]>([
@@ -160,7 +164,7 @@ export default function ResultDetailPage() {
   ]);
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() => 
-    generateGraphData(graphDateRange.start, graphDateRange.end)
+    generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
   );
 
   useEffect(() => {
@@ -182,8 +186,25 @@ export default function ResultDetailPage() {
   }, []);
 
   useEffect(() => {
-    setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetric || undefined));
-  }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetric]);
+    setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
+  }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (dropdownOpen && !target.closest('.metric-dropdown-container')) {
+        setDropdownOpen(false);
+      }
+    };
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [dropdownOpen]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -294,20 +315,31 @@ export default function ResultDetailPage() {
     console.log('Generating daily report for:', formatDate(selectedDate));
   };
 
-  const weekDays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-    'July', 'August', 'September', 'October', 'November', 'December'];
+  const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS_SHORT;
+  const monthNames = CALENDAR_CONSTANTS.MONTH_NAMES;
 
-  // Calculate Y-axis domain based on selected metric
+  // Calculate Y-axis domain based on selected metrics
   const getYAxisDomain = (): [number, number] => {
-    if (selectedMetric?.includes('Output Change')) {
-      return [-6, 6];
-    } else if (selectedMetric?.includes('Uniformity Change')) {
-      return [-5, 5];
-    } else if (selectedMetric?.includes('Center Shift')) {
-      return [-4, 4];
+    // Use the widest range needed for any selected metric
+    if (selectedMetrics.size === 0) {
+      return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
     }
-    return [-6, 6];
+    
+    let hasOutputChange = false;
+    let hasUniformityChange = false;
+    let hasCenterShift = false;
+    
+    selectedMetrics.forEach((metric) => {
+      if (metric.includes('Output Change')) hasOutputChange = true;
+      if (metric.includes('Uniformity Change')) hasUniformityChange = true;
+      if (metric.includes('Center Shift')) hasCenterShift = true;
+    });
+    
+    // Return the widest range
+    if (hasOutputChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.OUTPUT_CHANGE as [number, number];
+    if (hasUniformityChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.UNIFORMITY_CHANGE as [number, number];
+    if (hasCenterShift) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.CENTER_SHIFT as [number, number];
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
   };
 
   // Calculate threshold values for shading
@@ -317,6 +349,42 @@ export default function ResultDetailPage() {
     const topThreshold = max - (range * thresholdTopPercent / 100);
     const bottomThreshold = min + (range * thresholdBottomPercent / 100);
     return { topThreshold, bottomThreshold, min, max };
+  };
+
+  // Get all available metrics from all beams
+  const getAllAvailableMetrics = (): string[] => {
+    const metricsSet = new Set<string>();
+    checkResults.forEach(check => {
+      check.metrics.forEach(metric => {
+        metricsSet.add(metric.name);
+      });
+    });
+    return Array.from(metricsSet).sort();
+  };
+
+  const availableMetrics = getAllAvailableMetrics();
+
+  // Toggle metric selection
+  const toggleMetric = (metricName: string) => {
+    setSelectedMetrics(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(metricName)) {
+        newSet.delete(metricName);
+      } else {
+        newSet.add(metricName);
+      }
+      return newSet;
+    });
+    setShowGraph(true);
+  };
+
+  const getMetricColor = (index: number): string => {
+    return GRAPH_CONSTANTS.METRIC_COLORS[index % GRAPH_CONSTANTS.METRIC_COLORS.length];
+  };
+
+  // Sanitize metric name for use as dataKey
+  const getMetricKey = (metricName: string): string => {
+    return metricName.replace(/[^a-zA-Z0-9]/g, '_');
   };
 
   if (loading) {
@@ -344,10 +412,10 @@ export default function ResultDetailPage() {
             MPC Results for {formatDate(selectedDate)}
           </h1>
           <p className="text-gray-600 mb-6 max-w-2xl">
-            Subheading that sets up context, shares more info about the author, or generally gets people psyched to keep reading.
+            {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
           </p>
           <Button onClick={handleGenerateReport} size="lg">
-            Generate Daily Report
+            {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
           </Button>
         </div>
 
@@ -416,13 +484,21 @@ export default function ResultDetailPage() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedMetric(metric.name);
+                                      setSelectedMetrics(prev => {
+                                        const newSet = new Set(prev);
+                                        if (newSet.has(metric.name)) {
+                                          newSet.delete(metric.name);
+                                        } else {
+                                          newSet.add(metric.name);
+                                        }
+                                        return newSet;
+                                      });
                                       setShowGraph(true);
                                     }}
                                     className={`p-1 rounded hover:bg-gray-100 transition-colors ${
-                                      selectedMetric === metric.name && showGraph ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
+                                      selectedMetrics.has(metric.name) ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
                                     }`}
-                                    title={`Show graph for ${metric.name}`}
+                                    title={`${selectedMetrics.has(metric.name) ? 'Remove' : 'Add'} graph for ${metric.name}`}
                                   >
                                     <MdShowChart className="w-4 h-4" />
                                   </button>
@@ -448,19 +524,43 @@ export default function ResultDetailPage() {
             <div className="border border-gray-200 rounded-lg p-4">
               {/* Graph Header */}
               <div className="mb-4 flex items-center justify-between">
-                <div className="relative">
-                  <select 
-                    className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    value={selectedMetric}
-                    onChange={(e) => {
-                      setSelectedMetric(e.target.value);
-                    }}
+                <div className="relative metric-dropdown-container">
+                  <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm w-64 text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
-                    <option value="Output Change (%)">Output Change (%)</option>
-                    <option value="Uniformity Change (%)">Uniformity Change (%)</option>
-                    <option value="Center Shift">Center Shift</option>
-                  </select>
-                  <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                    <span className="truncate">
+                      {selectedMetrics.size === 0 
+                        ? 'Select metrics...' 
+                        : `${selectedMetrics.size} metric${selectedMetrics.size > 1 ? 's' : ''} selected`}
+                    </span>
+                    <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ${dropdownOpen ? 'transform rotate-180' : ''}`} />
+                  </button>
+                  
+                  {dropdownOpen && (
+                    <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {availableMetrics.length > 0 ? (
+                        <div className="py-2">
+                          {availableMetrics.map((metric) => (
+                            <label
+                              key={metric}
+                              className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedMetrics.has(metric)}
+                                onChange={() => toggleMetric(metric)}
+                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                              />
+                              <span className="ml-3 text-sm text-gray-900">{metric}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-2 text-sm text-gray-500">No metrics available</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowGraph(false)}
@@ -514,15 +614,22 @@ export default function ResultDetailPage() {
                         </>
                       );
                     })()}
-                    <Line 
-                      type="monotone" 
-                      dataKey="line1" 
-                      stroke="#420039" 
-                      strokeWidth={3}
-                      dot={{ r: 5 }}
-                      name={selectedMetric}
-                      activeDot={{ r: 7 }}
-                    />
+                    {Array.from(selectedMetrics).map((metricName, index) => {
+                      const dataKey = getMetricKey(metricName);
+                      const color = getMetricColor(index);
+                      return (
+                        <Line 
+                          key={metricName}
+                          type="monotone" 
+                          dataKey={dataKey}
+                          stroke={color}
+                          strokeWidth={3}
+                          dot={{ r: 5 }}
+                          name={metricName}
+                          activeDot={{ r: 7 }}
+                        />
+                      );
+                    })}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
