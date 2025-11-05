@@ -28,9 +28,6 @@ export default function Navbar({ user }: NavbarProps) {
         <Link href={NAVIGATION.ROUTES.MPC_RESULT} className="text-gray-600 hover:text-gray-900 transition-colors">
           Machines
         </Link>
-        <Link href={NAVIGATION.ROUTES.RESULT_DETAIL} className="text-gray-600 hover:text-gray-900 transition-colors">
-          Reports
-        </Link>
         <a href={NAVIGATION.LINKS.SETTINGS} className="text-gray-600 hover:text-gray-900 transition-colors">
           Settings
         </a>
