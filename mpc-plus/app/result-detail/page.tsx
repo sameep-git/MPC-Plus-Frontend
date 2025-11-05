@@ -9,7 +9,6 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  Legend, 
   ResponsiveContainer,
   ReferenceArea
 } from 'recharts';
@@ -84,12 +83,7 @@ export default function ResultDetailPage() {
   const selectedDate = dateParam ? new Date(dateParam) : new Date();
   
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
-  const [graphDataLines, setGraphDataLines] = useState({
-    line1: true,
-    line2: true,
-    line3: true,
-  });
-  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<string>('Output Change (%)');
   
   // Date range for graph
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
@@ -104,7 +98,6 @@ export default function ResultDetailPage() {
   const [selectedCalendarDates, setSelectedCalendarDates] = useState<Set<string>>(new Set());
 
   // Threshold settings for graph shading
-  const [thresholdEnabled, setThresholdEnabled] = useState<boolean>(true);
   const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(16.67); // 1/6 = 16.67%
   const [thresholdBottomPercent, setThresholdBottomPercent] = useState<number>(16.67); // 1/6 = 16.67%
   const [thresholdColor, setThresholdColor] = useState<string>('#fef3c7'); // Default: amber-100
@@ -452,29 +445,19 @@ export default function ResultDetailPage() {
             <div className="border border-gray-200 rounded-lg p-4">
               {/* Graph Header */}
               <div className="mb-4 flex items-center justify-between">
-                <div>
-                  {selectedMetric ? (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-gray-900">Showing:</span>
-                      <span className="text-sm text-purple-600 font-semibold">{selectedMetric}</span>
-                      <button
-                        onClick={() => setSelectedMetric(null)}
-                        className="text-xs text-gray-500 hover:text-gray-700 underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <select className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500">
-                        <option>Add Data Line</option>
-                        <option>Output Change (%)</option>
-                        <option>Uniformity Change (%)</option>
-                        <option>Center Shift</option>
-                      </select>
-                      <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-                    </div>
-                  )}
+                <div className="relative">
+                  <select 
+                    className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={selectedMetric}
+                    onChange={(e) => {
+                      setSelectedMetric(e.target.value);
+                    }}
+                  >
+                    <option value="Output Change (%)">Output Change (%)</option>
+                    <option value="Uniformity Change (%)">Uniformity Change (%)</option>
+                    <option value="Center Shift">Center Shift</option>
+                  </select>
+                  <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
                 </div>
               </div>
               
@@ -500,7 +483,7 @@ export default function ResultDetailPage() {
                         borderRadius: '8px'
                       }}
                     />
-                    {thresholdEnabled && (() => {
+                    {(() => {
                       const { topThreshold, bottomThreshold, min, max } = getThresholdValues();
                       return (
                         <>
@@ -521,154 +504,72 @@ export default function ResultDetailPage() {
                         </>
                       );
                     })()}
-                    {selectedMetric ? (
-                      <Line 
-                        type="monotone" 
-                        dataKey="line1" 
-                        stroke="#420039" 
-                        strokeWidth={3}
-                        dot={{ r: 5 }}
-                        name={selectedMetric}
-                        activeDot={{ r: 7 }}
-                      />
-                    ) : (
-                      <>
-                        <Legend />
-                        {graphDataLines.line1 && (
-                          <Line 
-                            type="monotone" 
-                            dataKey="line1" 
-                            stroke="#1e40af" 
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            name="Line 1"
-                          />
-                        )}
-                        {graphDataLines.line2 && (
-                          <Line 
-                            type="monotone" 
-                            dataKey="line2" 
-                            stroke="#3b82f6" 
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            name="Line 2"
-                          />
-                        )}
-                        {graphDataLines.line3 && (
-                          <Line 
-                            type="monotone" 
-                            dataKey="line3" 
-                            stroke="#22c55e" 
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            name="Line 3"
-                          />
-                        )}
-                      </>
-                    )}
+                    <Line 
+                      type="monotone" 
+                      dataKey="line1" 
+                      stroke="#420039" 
+                      strokeWidth={3}
+                      dot={{ r: 5 }}
+                      name={selectedMetric}
+                      activeDot={{ r: 7 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
               
               {/* Threshold Controls */}
               <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-3">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={thresholdEnabled}
-                    onChange={(e) => setThresholdEnabled(e.target.checked)}
-                    className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <label className="text-sm font-medium text-gray-700">Enable Threshold Shading</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Top Threshold (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={thresholdTopPercent}
+                      onChange={(e) => setThresholdTopPercent(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Bottom Threshold (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={thresholdBottomPercent}
+                      onChange={(e) => setThresholdBottomPercent(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
-                {thresholdEnabled && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Top Threshold (%)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          value={thresholdTopPercent}
-                          onChange={(e) => setThresholdTopPercent(parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Bottom Threshold (%)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          value={thresholdBottomPercent}
-                          onChange={(e) => setThresholdBottomPercent(parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">
-                        Shading Color
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="color"
-                          value={thresholdColor}
-                          onChange={(e) => setThresholdColor(e.target.value)}
-                          className="h-8 w-16 border border-gray-300 rounded cursor-pointer"
-                        />
-                        <input
-                          type="text"
-                          value={thresholdColor}
-                          onChange={(e) => setThresholdColor(e.target.value)}
-                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="#fef3c7"
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Shading Color
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={thresholdColor}
+                      onChange={(e) => setThresholdColor(e.target.value)}
+                      className="h-8 w-16 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={thresholdColor}
+                      onChange={(e) => setThresholdColor(e.target.value)}
+                      className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="#fef3c7"
+                    />
+                  </div>
+                </div>
               </div>
-              
-              {/* Graph Legend/Controls */}
-              {!selectedMetric && (
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={graphDataLines.line1}
-                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line1: e.target.checked }))}
-                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">Line 1</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={graphDataLines.line2}
-                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line2: e.target.checked }))}
-                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">Line 2</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={graphDataLines.line3}
-                      onChange={(e) => setGraphDataLines(prev => ({ ...prev, line3: e.target.checked }))}
-                      className="w-4 h-4 text-purple-900 border-gray-300 rounded focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">Line 3</span>
-                  </label>
-                </div>
-              )}
             </div>
 
             {/* Date Range Selector and Calendar */}
