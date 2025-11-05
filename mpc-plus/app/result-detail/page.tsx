@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   ReferenceArea
 } from 'recharts';
-import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart } from 'react-icons/md';
+import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS } from '../../constants';
@@ -84,6 +84,7 @@ export default function ResultDetailPage() {
   
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
   const [selectedMetric, setSelectedMetric] = useState<string>('Output Change (%)');
+  const [showGraph, setShowGraph] = useState<boolean>(false);
   
   // Date range for graph
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
@@ -358,7 +359,7 @@ export default function ResultDetailPage() {
         )}
 
         {/* Main Content - Two Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+        <div className={`grid gap-8 mt-8 ${showGraph ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
           {/* Left Column - Check Results */}
           <div className="space-y-4">
             {checkResults.map((check) => {
@@ -416,9 +417,10 @@ export default function ResultDetailPage() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedMetric(metric.name);
+                                      setShowGraph(true);
                                     }}
                                     className={`p-1 rounded hover:bg-gray-100 transition-colors ${
-                                      selectedMetric === metric.name ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
+                                      selectedMetric === metric.name && showGraph ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
                                     }`}
                                     title={`Show graph for ${metric.name}`}
                                   >
@@ -440,6 +442,7 @@ export default function ResultDetailPage() {
           </div>
 
           {/* Right Column - Graph and Date Selection */}
+          {showGraph && (
           <div className="space-y-6">
             {/* Graph Area */}
             <div className="border border-gray-200 rounded-lg p-4">
@@ -459,6 +462,13 @@ export default function ResultDetailPage() {
                   </select>
                   <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
                 </div>
+                <button
+                  onClick={() => setShowGraph(false)}
+                  className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"
+                  title="Close graph"
+                >
+                  <MdClose className="w-5 h-5" />
+                </button>
               </div>
               
               {/* Graph */}
@@ -713,6 +723,7 @@ export default function ResultDetailPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
