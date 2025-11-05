@@ -98,9 +98,9 @@ export default function ResultDetailPage() {
     return { start, end };
   });
   
-  const [calendarMonth, setCalendarMonth] = useState<number>(graphDateRange.end.getMonth());
-  const [calendarYear, setCalendarYear] = useState<number>(graphDateRange.end.getFullYear());
-  const [selectedCalendarDates, setSelectedCalendarDates] = useState<Set<string>>(new Set());
+  const [dateRangePickerOpen, setDateRangePickerOpen] = useState<boolean>(false);
+  const [tempStartDate, setTempStartDate] = useState<string>('');
+  const [tempEndDate, setTempEndDate] = useState<string>('');
 
   // Threshold settings for graph shading
   const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT);
@@ -189,22 +189,39 @@ export default function ResultDetailPage() {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
   }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (dropdownOpen && !target.closest('.metric-dropdown-container')) {
         setDropdownOpen(false);
       }
+      if (dateRangePickerOpen && !target.closest('.date-range-picker-container')) {
+        setDateRangePickerOpen(false);
+      }
     };
 
-    if (dropdownOpen) {
+    if (dropdownOpen || dateRangePickerOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [dropdownOpen]);
+  }, [dropdownOpen, dateRangePickerOpen]);
+
+  // Initialize temp dates when picker opens
+  useEffect(() => {
+    if (dateRangePickerOpen) {
+      const formatDateForInput = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      setTempStartDate(formatDateForInput(graphDateRange.start));
+      setTempEndDate(formatDateForInput(graphDateRange.end));
+    }
+  }, [dateRangePickerOpen, graphDateRange]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -226,53 +243,33 @@ export default function ResultDetailPage() {
     return `${start.getDate()} ${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getFullYear().toString().slice(-2)} - ${end.getDate()} ${end.toLocaleDateString('en-US', { month: 'short' })} ${end.getFullYear().toString().slice(-2)}`;
   };
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    
-    // Adjust to start week on Monday
-    const adjustedStart = startingDayOfWeek === 0 ? 6 : startingDayOfWeek - 1;
-    
-    for (let i = 0; i < adjustedStart; i++) {
-      days.push(null);
-    }
-    
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push({ day, month, year });
-    }
-    
-    return days;
-  };
-
-  const isDateInRange = (dayObj: { day: number; month: number; year: number } | null): boolean => {
-    if (!dayObj) return false;
-    const date = new Date(dayObj.year, dayObj.month, dayObj.day);
-    return date >= graphDateRange.start && date <= graphDateRange.end;
-  };
-
-  const isDateSelected = (dayObj: { day: number; month: number; year: number } | null): boolean => {
-    if (!dayObj) return false;
-    const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-    return selectedCalendarDates.has(dateStr);
-  };
-
-  const handleDateClick = (dayObj: { day: number; month: number; year: number }) => {
-    const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-    setSelectedCalendarDates(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(dateStr)) {
-        newSet.delete(dateStr);
+  const handleDateRangeApply = () => {
+    if (tempStartDate && tempEndDate) {
+      const start = new Date(tempStartDate);
+      const end = new Date(tempEndDate);
+      
+      // Ensure start is before end
+      if (start > end) {
+        // Swap if start is after end
+        setGraphDateRange({ start: end, end: start });
       } else {
-        newSet.add(dateStr);
+        setGraphDateRange({ start, end });
       }
-      return newSet;
-    });
+      setDateRangePickerOpen(false);
+    }
+  };
+
+  const handleDateRangeCancel = () => {
+    // Reset temp dates to current range
+    const formatDateForInput = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    setTempStartDate(formatDateForInput(graphDateRange.start));
+    setTempEndDate(formatDateForInput(graphDateRange.end));
+    setDateRangePickerOpen(false);
   };
 
   const handleQuickDateRange = (range: string) => {
@@ -307,8 +304,7 @@ export default function ResultDetailPage() {
     }
     
     setGraphDateRange({ start, end });
-    setCalendarMonth(end.getMonth());
-    setCalendarYear(end.getFullYear());
+    setDateRangePickerOpen(false);
   };
 
   const handleGenerateReport = () => {
@@ -414,9 +410,67 @@ export default function ResultDetailPage() {
           <p className="text-gray-600 mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
           </p>
-          <Button onClick={handleGenerateReport} size="lg">
-            {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
-          </Button>
+          <div className="flex items-center gap-4 flex-wrap">
+            <Button onClick={handleGenerateReport} size="lg">
+              {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
+            </Button>
+            {/* Date Range Picker Dropdown */}
+            <div className="relative date-range-picker-container">
+              <button
+                onClick={() => setDateRangePickerOpen(!dateRangePickerOpen)}
+                className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
+              >
+                <span className="truncate">
+                  {formatDateRange(graphDateRange.start, graphDateRange.end)}
+                </span>
+                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${dateRangePickerOpen ? 'transform rotate-180' : ''}`} />
+              </button>
+              
+              {dateRangePickerOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={tempStartDate}
+                        onChange={(e) => setTempStartDate(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={tempEndDate}
+                        onChange={(e) => setTempEndDate(e.target.value)}
+                        min={tempStartDate}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={handleDateRangeApply}
+                        className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={handleDateRangeCancel}
+                        className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Error Display */}
@@ -689,144 +743,39 @@ export default function ResultDetailPage() {
               </div>
             </div>
 
-            {/* Date Range Selector and Calendar */}
+            {/* Quick Date Options */}
             <div className="border border-gray-200 rounded-lg p-4">
-              {/* Date Range Display */}
-              <div className="mb-4">
-                <div className="relative inline-block">
-                  <select
-                    className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option>{formatDateRange(graphDateRange.start, graphDateRange.end)}</option>
-                  </select>
-                  <MdKeyboardArrowDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-                </div>
-              </div>
-              
-              {/* Calendar Widget */}
-              <div className="grid grid-cols-5 gap-4">
-                {/* Quick Date Options */}
-                <div className="col-span-2 space-y-2">
-                  <button
-                    onClick={() => handleQuickDateRange('today')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('yesterday')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    Yesterday
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastWeek')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    Last week
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastMonth')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    Last month
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastQuarter')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    Last quarter
-                  </button>
-                </div>
-                
-                {/* Calendar */}
-                <div className="col-span-3">
-                  {/* Month Navigation */}
-                  <div className="flex items-center justify-between mb-4">
-                    <button
-                      onClick={() => {
-                        if (calendarMonth === 0) {
-                          setCalendarMonth(11);
-                          setCalendarYear(prev => prev - 1);
-                        } else {
-                          setCalendarMonth(prev => prev - 1);
-                        }
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    <span className="text-sm font-medium text-gray-900">
-                      {monthNames[calendarMonth]} {calendarYear}
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (calendarMonth === 11) {
-                          setCalendarMonth(0);
-                          setCalendarYear(prev => prev + 1);
-                        } else {
-                          setCalendarMonth(prev => prev + 1);
-                        }
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  </div>
-                  
-                  {/* Calendar Grid */}
-                  <div className="grid grid-cols-7 gap-1 mb-2">
-                    {weekDays.map((day) => (
-                      <div key={day} className="p-1 text-center text-xs font-medium text-gray-500">
-                        {day}
-                      </div>
-                    ))}
-                    
-                    {getDaysInMonth(new Date(calendarYear, calendarMonth, 1)).map((dayObj, index) => {
-                      if (dayObj === null) {
-                        return <div key={`empty-${index}`} className="p-1"></div>;
-                      }
-                      
-                      const inRange = isDateInRange(dayObj);
-                      const isSelected = isDateSelected(dayObj);
-                      const date = new Date(dayObj.year, dayObj.month, dayObj.day);
-                      const isToday = date.toDateString() === new Date().toDateString();
-                      
-                      return (
-                        <button
-                          key={`${dayObj.year}-${dayObj.month}-${dayObj.day}`}
-                          onClick={() => handleDateClick(dayObj)}
-                          className={`p-1 text-xs rounded transition-colors ${
-                            isSelected
-                              ? 'bg-blue-500 text-white'
-                              : inRange
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'text-gray-900 hover:bg-gray-50'
-                          } ${isToday ? 'ring-2 ring-purple-500' : ''}`}
-                        >
-                          {dayObj.day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      setSelectedCalendarDates(new Set());
-                      setGraphDateRange({
-                        start: new Date(selectedDate),
-                        end: new Date(selectedDate),
-                      });
-                    }}
-                    className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors border border-gray-200"
-                  >
-                    Reset
-                  </button>
-                </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleQuickDateRange('today')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => handleQuickDateRange('yesterday')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Yesterday
+                </button>
+                <button
+                  onClick={() => handleQuickDateRange('lastWeek')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Last week
+                </button>
+                <button
+                  onClick={() => handleQuickDateRange('lastMonth')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Last month
+                </button>
+                <button
+                  onClick={() => handleQuickDateRange('lastQuarter')}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Last quarter
+                </button>
               </div>
             </div>
           </div>
