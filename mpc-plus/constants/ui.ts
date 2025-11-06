@@ -3,6 +3,7 @@ export const UI_CONSTANTS = {
   // Button text
   BUTTONS: {
     GENERATE_REPORT: 'Generate Report',
+    GENERATE_DAILY_REPORT: 'Generate Daily Report',
     VIEW_ALL_RESULTS: 'View All Results',
     VIEW_ALL_UPDATES: 'View All Updates',
     RETRY: 'Retry',
@@ -98,7 +99,32 @@ export const API_CONSTANTS = {
 // Calendar Constants
 export const CALENDAR_CONSTANTS = {
   WEEK_DAYS: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'],
+  WEEK_DAYS_SHORT: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+  MONTH_NAMES: ['January', 'February', 'March', 'April', 'May', 'June', 
+    'July', 'August', 'September', 'October', 'November', 'December'],
   MIN_CALENDAR_HEIGHT: 80,
+} as const;
+
+// Graph Constants
+export const GRAPH_CONSTANTS = {
+  METRIC_COLORS: [
+    '#420039', // Purple
+    '#8B5CF6', // Violet
+    '#EC4899', // Pink
+    '#F59E0B', // Amber
+    '#10B981', // Emerald
+    '#3B82F6', // Blue
+    '#EF4444', // Red
+    '#06B6D4', // Cyan
+  ],
+  DEFAULT_THRESHOLD_COLOR: '#fef3c7',
+  DEFAULT_THRESHOLD_PERCENT: 16.67,
+  Y_AXIS_DOMAINS: {
+    OUTPUT_CHANGE: [-6, 6],
+    UNIFORMITY_CHANGE: [-5, 5],
+    CENTER_SHIFT: [-4, 4],
+    DEFAULT: [-6, 6],
+  },
 } as const;
 
 // User Menu Actions
