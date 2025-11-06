@@ -73,6 +73,7 @@ export const NAVIGATION = {
     HOME: '/',
     MPC_RESULT: '/results',
     RESULT_DETAIL: '/result-detail',
+    SETTINGS: '/settings',
   },
   LINKS: {
     DASHBOARD: '#',

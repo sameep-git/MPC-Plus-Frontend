@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
+import ThemeProvider from "../components/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,11 +28,38 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} antialiased`}
+        suppressHydrationWarning
       >
-        {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const settings = localStorage.getItem('mpc-plus-settings');
+                  const html = document.documentElement;
+                  if (settings) {
+                    const parsed = JSON.parse(settings);
+                    if (parsed.theme === 'dark') {
+                      html.classList.add('dark');
+                    } else {
+                      html.classList.remove('dark');
+                    }
+                  } else {
+                    html.classList.remove('dark');
+                  }
+                } catch (e) {
+                  document.documentElement.classList.remove('dark');
+                }
+              })();
+            `,
+          }}
+        />
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
