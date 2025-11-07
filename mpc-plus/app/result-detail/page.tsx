@@ -16,6 +16,16 @@ import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescri
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
+import { getSettings } from '../../lib/settings';
+
+const getGraphThresholdSettings = () => {
+  const settings = getSettings();
+  return {
+    topPercent: settings.graphThresholdTopPercent ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT,
+    bottomPercent: settings.graphThresholdBottomPercent ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT,
+    color: settings.graphThresholdColor ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR,
+  };
+};
 
 // Mock data for check results
 interface CheckMetric {
@@ -102,10 +112,8 @@ export default function ResultDetailPage() {
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
-  // Threshold settings for graph shading
-  const [thresholdTopPercent, setThresholdTopPercent] = useState<number>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT);
-  const [thresholdBottomPercent, setThresholdBottomPercent] = useState<number>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT);
-  const [thresholdColor, setThresholdColor] = useState<string>(GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR);
+  // Threshold settings for graph shading sourced from global settings
+  const [graphThresholdSettings, setGraphThresholdSettings] = useState(() => getGraphThresholdSettings());
 
   // Mock check results
   const [checkResults] = useState<CheckResult[]>([
@@ -188,6 +196,22 @@ export default function ResultDetailPage() {
   useEffect(() => {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
   }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
+
+  useEffect(() => {
+    const refreshGraphThresholds = () => {
+      setGraphThresholdSettings(getGraphThresholdSettings());
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', refreshGraphThresholds);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', refreshGraphThresholds);
+      }
+    };
+  }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -342,8 +366,8 @@ export default function ResultDetailPage() {
   const getThresholdValues = () => {
     const [min, max] = getYAxisDomain();
     const range = max - min;
-    const topThreshold = max - (range * thresholdTopPercent / 100);
-    const bottomThreshold = min + (range * thresholdBottomPercent / 100);
+    const topThreshold = max - (range * graphThresholdSettings.topPercent / 100);
+    const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent / 100);
     return { topThreshold, bottomThreshold, min, max };
   };
 
@@ -669,14 +693,14 @@ export default function ResultDetailPage() {
                           <ReferenceArea
                             y1={topThreshold}
                             y2={max}
-                            fill={thresholdColor}
+                            fill={graphThresholdSettings.color}
                             fillOpacity={0.3}
                           />
                           {/* Bottom threshold shading */}
                           <ReferenceArea
                             y1={min}
                             y2={bottomThreshold}
-                            fill={thresholdColor}
+                            fill={graphThresholdSettings.color}
                             fillOpacity={0.3}
                           />
                         </>
@@ -739,64 +763,6 @@ export default function ResultDetailPage() {
               </div>
             </div>
 
-            {/* Threshold Controls */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <div className="mb-3">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Threshold Settings</h3>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Top Threshold (%)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={thresholdTopPercent}
-                      onChange={(e) => setThresholdTopPercent(parseFloat(e.target.value) || 0)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Bottom Threshold (%)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={thresholdBottomPercent}
-                      onChange={(e) => setThresholdBottomPercent(parseFloat(e.target.value) || 0)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">
-                    Shading Color
-                  </label>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={thresholdColor}
-                      onChange={(e) => setThresholdColor(e.target.value)}
-                      className="h-8 w-16 border border-gray-300 rounded cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={thresholdColor}
-                      onChange={(e) => setThresholdColor(e.target.value)}
-                      className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="#fef3c7"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
           )}
         </div>
