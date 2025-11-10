@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   LineChart, 
@@ -10,7 +10,8 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  ReferenceArea
+  ReferenceArea,
+  ReferenceLine
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose, MdClear } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
@@ -26,6 +27,8 @@ const getGraphThresholdSettings = () => {
     color: settings.graphThresholdColor ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR,
   };
 };
+
+const getBaselineSettingsSnapshot = () => getSettings().baseline;
 
 // Mock data for check results
 interface CheckMetric {
@@ -46,6 +49,7 @@ interface CheckResult {
 // Mock data for graph
 interface GraphDataPoint {
   date: string;
+  fullDate: string;
   [key: string]: string | number; // Allow dynamic metric keys
 }
 
@@ -55,8 +59,10 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
   const currentDate = new Date(startDate);
   
   while (currentDate <= endDate) {
-    const dataPoint: any = {
+    const isoDate = currentDate.toISOString().split('T')[0];
+    const dataPoint: GraphDataPoint = {
       date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      fullDate: isoDate,
     };
     
     // Generate data for each selected metric
@@ -114,6 +120,7 @@ export default function ResultDetailPage() {
 
   // Threshold settings for graph shading sourced from global settings
   const [graphThresholdSettings, setGraphThresholdSettings] = useState(() => getGraphThresholdSettings());
+  const [baselineSettings, setBaselineSettings] = useState(() => getBaselineSettingsSnapshot());
 
   // Mock check results
   const [checkResults] = useState<CheckResult[]>([
@@ -198,17 +205,18 @@ export default function ResultDetailPage() {
   }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
 
   useEffect(() => {
-    const refreshGraphThresholds = () => {
+    const refreshSettings = () => {
       setGraphThresholdSettings(getGraphThresholdSettings());
+      setBaselineSettings(getBaselineSettingsSnapshot());
     };
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('focus', refreshGraphThresholds);
+      window.addEventListener('focus', refreshSettings);
     }
 
     return () => {
       if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', refreshGraphThresholds);
+        window.removeEventListener('focus', refreshSettings);
       }
     };
   }, []);
@@ -407,10 +415,123 @@ export default function ResultDetailPage() {
     return metricName.replace(/[^a-zA-Z0-9]/g, '_');
   };
 
+  const getManualBaselineValue = (metricName: string): number => {
+    const lowerMetric = metricName.toLowerCase();
+    if (lowerMetric.includes('output change')) {
+      return baselineSettings.manualValues.outputChange;
+    }
+    if (lowerMetric.includes('uniformity change')) {
+      return baselineSettings.manualValues.uniformityChange;
+    }
+    if (lowerMetric.includes('center shift')) {
+      return baselineSettings.manualValues.centerShift;
+    }
+    return 0;
+  };
+
+  const baselineComputation = useMemo(() => {
+    const valuesByMetric: Record<string, number | null> = {};
+    let baselineDateInRange = false;
+    let baselineDataPoint: GraphDataPoint | undefined;
+
+    if (baselineSettings.mode === 'date' && baselineSettings.date) {
+      baselineDataPoint = graphData.find((point) => point.fullDate === baselineSettings.date);
+      baselineDateInRange = Boolean(baselineDataPoint);
+    }
+
+    Array.from(selectedMetrics).forEach((metricName) => {
+      const key = getMetricKey(metricName);
+      let baselineValue: number | null = null;
+
+      if (baselineSettings.mode === 'manual') {
+        baselineValue = getManualBaselineValue(metricName);
+      } else if (baselineSettings.mode === 'date' && baselineDataPoint) {
+        const candidate = baselineDataPoint[key];
+        baselineValue = typeof candidate === 'number' ? candidate : null;
+      }
+
+      valuesByMetric[key] = baselineValue;
+    });
+
+    const hasNumericBaseline = Object.values(valuesByMetric).some(
+      (value) => typeof value === 'number'
+    );
+
+    return {
+      valuesByMetric,
+      hasNumericBaseline,
+      baselineDateInRange,
+      requestedDate: baselineSettings.date,
+    };
+  }, [baselineSettings, graphData, selectedMetrics]);
+
+  const normalizedGraphData = useMemo(() => {
+    if (!baselineComputation.hasNumericBaseline) {
+      return graphData;
+    }
+
+    return graphData.map((point) => {
+      const nextPoint: GraphDataPoint = { ...point };
+
+      Object.entries(baselineComputation.valuesByMetric).forEach(([key, baselineValue]) => {
+        if (typeof baselineValue === 'number') {
+          const rawValue = point[key];
+          if (typeof rawValue === 'number') {
+            nextPoint[key] = Number((rawValue - baselineValue).toFixed(3));
+          }
+        }
+      });
+
+      return nextPoint;
+    });
+  }, [graphData, baselineComputation]);
+
+  const baselineSummary = useMemo(() => {
+    if (baselineSettings.mode === 'date') {
+      if (!baselineSettings.date) {
+        return {
+          message: 'Select a baseline date in Settings to see changes relative to that day.',
+          tone: 'muted' as const,
+        };
+      }
+
+      if (selectedMetrics.size > 0 && !baselineComputation.baselineDateInRange) {
+        return {
+          message: `Baseline date ${baselineSettings.date} is outside the current graph range. Adjust the range or pick a different date in Settings.`,
+          tone: 'warning' as const,
+        };
+      }
+
+      return {
+        message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day.`,
+        tone: 'info' as const,
+      };
+    }
+
+    const { manualValues } = baselineSettings;
+    return {
+      message: `Baseline uses manual values — Output ${manualValues.outputChange}, Uniformity ${manualValues.uniformityChange}, Center Shift ${manualValues.centerShift}.`,
+      tone: 'info' as const,
+    };
+  }, [baselineSettings, baselineComputation.baselineDateInRange, selectedMetrics.size]);
+
+  const getBaselineBannerClasses = () => {
+    switch (baselineSummary.tone) {
+      case 'warning':
+        return 'bg-amber-50 border-amber-200 text-amber-700';
+      case 'info':
+        return 'bg-blue-50 border-blue-200 text-blue-700';
+      default:
+        return 'bg-gray-50 border-gray-200 text-gray-600';
+    }
+  };
+
   // Clear all selected metrics
   const handleClearSelections = () => {
     setSelectedMetrics(new Set());
   };
+
+  const chartData = baselineComputation.hasNumericBaseline ? normalizedGraphData : graphData;
 
   if (loading) {
     return (
@@ -662,11 +783,22 @@ export default function ResultDetailPage() {
                   </button>
                 </div>
               </div>
+
+              {baselineSummary && (
+                <div className={`mb-4 px-4 py-3 border rounded-lg text-sm ${getBaselineBannerClasses()}`}>
+                  {baselineSummary.message}
+                  {baselineSummary.tone === 'warning' && (
+                    <span className="ml-1">
+                      Adjust ranges or update the baseline in Settings.
+                    </span>
+                  )}
+                </div>
+              )}
               
               {/* Graph */}
               <div className="h-96 mb-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={graphData}>
+                  <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis 
                       dataKey="date" 
@@ -706,6 +838,20 @@ export default function ResultDetailPage() {
                         </>
                       );
                     })()}
+                    {baselineComputation.hasNumericBaseline && (
+                      <ReferenceLine
+                        y={0}
+                        stroke="#1f2937"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        label={{
+                          value: 'Baseline',
+                          position: 'right',
+                          fill: '#1f2937',
+                          fontSize: 12,
+                        }}
+                      />
+                    )}
                     {Array.from(selectedMetrics).map((metricName, index) => {
                       const dataKey = getMetricKey(metricName);
                       const color = getMetricColor(index);
