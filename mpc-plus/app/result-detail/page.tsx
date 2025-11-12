@@ -425,6 +425,14 @@ export default function ResultDetailPage() {
     if (baselineSettings.mode === 'date' && baselineSettings.date) {
       baselineDataPoint = graphData.find((point) => point.fullDate === baselineSettings.date);
       baselineDateInRange = Boolean(baselineDataPoint);
+
+      if (!baselineDataPoint && selectedMetrics.size > 0) {
+        const baselineDate = new Date(baselineSettings.date);
+        if (!Number.isNaN(baselineDate.getTime())) {
+          const fallbackData = generateGraphData(baselineDate, baselineDate, selectedMetrics);
+          baselineDataPoint = fallbackData[0];
+        }
+      }
     }
 
     Array.from(selectedMetrics).forEach((metricName) => {
@@ -483,16 +491,23 @@ export default function ResultDetailPage() {
         };
       }
 
-      if (selectedMetrics.size > 0 && !baselineComputation.baselineDateInRange) {
+      if (selectedMetrics.size > 0) {
+        if (baselineComputation.baselineDateInRange) {
+          return {
+            message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day.`,
+            tone: 'info' as const,
+          };
+        }
+
         return {
-          message: `Baseline date ${baselineSettings.date} is outside the current graph range. Adjust the range or pick a different date in Settings.`,
-          tone: 'warning' as const,
+          message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day even though it falls outside the visible range.`,
+          tone: 'info' as const,
         };
       }
 
       return {
-        message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day.`,
-        tone: 'info' as const,
+        message: `Baseline from ${baselineSettings.date}. Select metrics to view deltas relative to that day.`,
+        tone: 'muted' as const,
       };
     }
 

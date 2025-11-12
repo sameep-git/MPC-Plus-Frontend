@@ -49,6 +49,14 @@ const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: st
   },
 ];
 
+const SETTINGS_SECTIONS = [
+  { id: 'theme-settings', label: 'Theme' },
+  { id: 'beam-threshold-settings', label: 'Beam Thresholds' },
+  { id: 'graph-threshold-settings', label: 'Graph Threshold' },
+  { id: 'baseline-settings', label: 'Baseline' },
+  { id: 'other-settings', label: 'Other Settings' },
+] as const;
+
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,6 +193,21 @@ export default function SettingsPage() {
       <main className="p-6 max-w-6xl mx-auto">
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-8">Settings</h1>
 
+        <nav
+          aria-label="Settings sections"
+          className="mb-8 flex flex-wrap gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm"
+        >
+          {SETTINGS_SECTIONS.map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 transition-colors"
+            >
+              {section.label}
+            </a>
+          ))}
+        </nav>
+
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -193,7 +216,10 @@ export default function SettingsPage() {
         )}
 
         {/* Theme Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="theme-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
           <p className="text-gray-600 dark:text-gray-300 mb-4">
             Choose your preferred theme for the application.
@@ -223,7 +249,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Beam Threshold Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="beam-threshold-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Beam Threshold Values
           </h2>
@@ -294,7 +323,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Graph Threshold Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="graph-threshold-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Graph Threshold Settings
           </h2>
@@ -357,7 +389,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Baseline Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="baseline-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Baseline Settings</h2>
           <p className="text-gray-600 dark:text-gray-300 mb-6">
             Choose how graph baselines are defined. Baselines appear as a horizontal line on result graphs, and metric
@@ -446,7 +481,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Other Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="other-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Other Settings
           </h2>
