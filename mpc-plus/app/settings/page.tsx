@@ -403,27 +403,25 @@ export default function SettingsPage() {
             </div>
 
             {settings.baseline.mode === 'date' && (
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Baseline Date
-                  </label>
+              <div className="w-full md:w-auto">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Baseline Date
+                </label>
+                <div className="flex flex-row flex-wrap gap-3 items-center">
                   <input
                     type="date"
                     value={settings.baseline.date ?? ''}
                     max={new Date().toISOString().split('T')[0]}
                     onChange={(e) => handleBaselineDateChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 md:flex-grow-0 md:w-64"
                   />
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Graph values will show the difference from measurements captured on this date.
-                  </p>
-                </div>
-                <div className="flex items-end">
-                  <Button onClick={handleBaselineUseToday} className="w-full md:w-auto">
+                  <Button onClick={handleBaselineUseToday} className="flex-shrink-0">
                     Use Today
                   </Button>
                 </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Graph values will show the difference from measurements captured on this date.
+                </p>
               </div>
             )}
 

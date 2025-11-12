@@ -30,6 +30,30 @@ const getGraphThresholdSettings = () => {
 
 const getBaselineSettingsSnapshot = () => getSettings().baseline;
 
+const DEFAULT_Y_AXIS_DOMAIN = GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
+
+const getMetricKey = (metricName: string): string => {
+  return metricName.replace(/[^a-zA-Z0-9]/g, '_');
+};
+
+const getDefaultDomainForMetric = (metricName: string): [number, number] => {
+  const lowerMetric = metricName.toLowerCase();
+
+  if (lowerMetric.includes('output change')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.OUTPUT_CHANGE as [number, number];
+  }
+
+  if (lowerMetric.includes('uniformity change')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.UNIFORMITY_CHANGE as [number, number];
+  }
+
+  if (lowerMetric.includes('center shift')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.CENTER_SHIFT as [number, number];
+  }
+
+  return DEFAULT_Y_AXIS_DOMAIN;
+};
+
 // Mock data for check results
 interface CheckMetric {
   name: string;
@@ -68,7 +92,7 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
     // Generate data for each selected metric
     selectedMetrics.forEach((metricName) => {
       // Create a sanitized key for the metric (remove special characters)
-      const key = metricName.replace(/[^a-zA-Z0-9]/g, '_');
+      const key = getMetricKey(metricName);
       
       // Generate value based on metric type
       let value = Math.random() * 12 - 6;
@@ -346,38 +370,7 @@ export default function ResultDetailPage() {
   const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS_SHORT;
   const monthNames = CALENDAR_CONSTANTS.MONTH_NAMES;
 
-  // Calculate Y-axis domain based on selected metrics
-  const getYAxisDomain = (): [number, number] => {
-    // Use the widest range needed for any selected metric
-    if (selectedMetrics.size === 0) {
-      return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
-    }
-    
-    let hasOutputChange = false;
-    let hasUniformityChange = false;
-    let hasCenterShift = false;
-    
-    selectedMetrics.forEach((metric) => {
-      if (metric.includes('Output Change')) hasOutputChange = true;
-      if (metric.includes('Uniformity Change')) hasUniformityChange = true;
-      if (metric.includes('Center Shift')) hasCenterShift = true;
-    });
-    
-    // Return the widest range
-    if (hasOutputChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.OUTPUT_CHANGE as [number, number];
-    if (hasUniformityChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.UNIFORMITY_CHANGE as [number, number];
-    if (hasCenterShift) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.CENTER_SHIFT as [number, number];
-    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
-  };
-
-  // Calculate threshold values for shading
-  const getThresholdValues = () => {
-    const [min, max] = getYAxisDomain();
-    const range = max - min;
-    const topThreshold = max - (range * graphThresholdSettings.topPercent / 100);
-    const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent / 100);
-    return { topThreshold, bottomThreshold, min, max };
-  };
+  // Calculate Y-axis domain based on selected metrics and data
 
   // Get all available metrics from all beams
   const getAllAvailableMetrics = (): string[] => {
@@ -408,11 +401,6 @@ export default function ResultDetailPage() {
 
   const getMetricColor = (index: number): string => {
     return GRAPH_CONSTANTS.METRIC_COLORS[index % GRAPH_CONSTANTS.METRIC_COLORS.length];
-  };
-
-  // Sanitize metric name for use as dataKey
-  const getMetricKey = (metricName: string): string => {
-    return metricName.replace(/[^a-zA-Z0-9]/g, '_');
   };
 
   const getManualBaselineValue = (metricName: string): number => {
@@ -532,6 +520,69 @@ export default function ResultDetailPage() {
   };
 
   const chartData = baselineComputation.hasNumericBaseline ? normalizedGraphData : graphData;
+
+  const yAxisDomain = useMemo<[number, number]>(() => {
+    if (selectedMetrics.size === 0) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    const metrics = Array.from(selectedMetrics);
+    let domainMin = Number.POSITIVE_INFINITY;
+    let domainMax = Number.NEGATIVE_INFINITY;
+
+    metrics.forEach((metricName) => {
+      const [defaultMin, defaultMax] = getDefaultDomainForMetric(metricName);
+      domainMin = Math.min(domainMin, defaultMin);
+      domainMax = Math.max(domainMax, defaultMax);
+    });
+
+    if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax)) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    chartData.forEach((point) => {
+      metrics.forEach((metricName) => {
+        const key = getMetricKey(metricName);
+        const value = point[key];
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          domainMin = Math.min(domainMin, value);
+          domainMax = Math.max(domainMax, value);
+        }
+      });
+    });
+
+    if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax)) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    if (domainMin === domainMax) {
+      const padding = Math.max(Math.abs(domainMin) * 0.1, 0.5);
+      return [domainMin - padding, domainMax + padding];
+    }
+
+    return [domainMin, domainMax];
+  }, [chartData, selectedMetrics]);
+
+  const thresholdValues = useMemo(() => {
+    const [min, max] = yAxisDomain;
+    const range = max - min;
+
+    if (range <= 0) {
+      return {
+        topThreshold: max,
+        bottomThreshold: min,
+        min,
+        max,
+      };
+    }
+
+    const topThreshold = max - (range * graphThresholdSettings.topPercent) / 100;
+    const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent) / 100;
+
+    return { topThreshold, bottomThreshold, min, max };
+  }, [graphThresholdSettings.bottomPercent, graphThresholdSettings.topPercent, yAxisDomain]);
+
+  const { topThreshold, bottomThreshold, min: thresholdMin, max: thresholdMax } = thresholdValues;
 
   if (loading) {
     return (
@@ -806,7 +857,7 @@ export default function ResultDetailPage() {
                       style={{ fontSize: '12px' }}
                     />
                     <YAxis 
-                      domain={getYAxisDomain()}
+                      domain={yAxisDomain}
                       stroke="#6b7280"
                       style={{ fontSize: '12px' }}
                     />
@@ -817,27 +868,22 @@ export default function ResultDetailPage() {
                         borderRadius: '8px'
                       }}
                     />
-                    {(() => {
-                      const { topThreshold, bottomThreshold, min, max } = getThresholdValues();
-                      return (
-                        <>
-                          {/* Top threshold shading */}
-                          <ReferenceArea
-                            y1={topThreshold}
-                            y2={max}
-                            fill={graphThresholdSettings.color}
-                            fillOpacity={0.3}
-                          />
-                          {/* Bottom threshold shading */}
-                          <ReferenceArea
-                            y1={min}
-                            y2={bottomThreshold}
-                            fill={graphThresholdSettings.color}
-                            fillOpacity={0.3}
-                          />
-                        </>
-                      );
-                    })()}
+                    <>
+                      {/* Top threshold shading */}
+                      <ReferenceArea
+                        y1={topThreshold}
+                        y2={thresholdMax}
+                        fill={graphThresholdSettings.color}
+                        fillOpacity={0.3}
+                      />
+                      {/* Bottom threshold shading */}
+                      <ReferenceArea
+                        y1={thresholdMin}
+                        y2={bottomThreshold}
+                        fill={graphThresholdSettings.color}
+                        fillOpacity={0.3}
+                      />
+                    </>
                     {baselineComputation.hasNumericBaseline && (
                       <ReferenceLine
                         y={0}
