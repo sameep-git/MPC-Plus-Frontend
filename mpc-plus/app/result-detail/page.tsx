@@ -125,6 +125,14 @@ export default function ResultDetailPage() {
   const dateParam = searchParams.get('date');
   const selectedDate = dateParam ? new Date(dateParam) : new Date();
   
+  // Remove date query parameter from URL after reading it
+  useEffect(() => {
+    if (dateParam && typeof window !== 'undefined') {
+      // Replace the URL without the query parameter
+      router.replace('/result-detail', { scroll: false });
+    }
+  }, [dateParam, router]);
+  
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
   const [showGraph, setShowGraph] = useState<boolean>(false);
@@ -138,7 +146,7 @@ export default function ResultDetailPage() {
     return { start, end };
   });
   
-  const [dateRangePickerOpen, setDateRangePickerOpen] = useState<boolean>(false);
+  const [activeDateRangePicker, setActiveDateRangePicker] = useState<'header' | 'quick' | null>(null);
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
@@ -252,22 +260,22 @@ export default function ResultDetailPage() {
       if (dropdownOpen && !target.closest('.metric-dropdown-container')) {
         setDropdownOpen(false);
       }
-      if (dateRangePickerOpen && !target.closest('.date-range-picker-container')) {
-        setDateRangePickerOpen(false);
+      if (activeDateRangePicker && !target.closest('.date-range-picker-container')) {
+        setActiveDateRangePicker(null);
       }
     };
 
-    if (dropdownOpen || dateRangePickerOpen) {
+    if (dropdownOpen || activeDateRangePicker) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [dropdownOpen, dateRangePickerOpen]);
+  }, [dropdownOpen, activeDateRangePicker]);
 
   // Initialize temp dates when picker opens
   useEffect(() => {
-    if (dateRangePickerOpen) {
+    if (activeDateRangePicker) {
       const formatDateForInput = (date: Date): string => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -277,7 +285,7 @@ export default function ResultDetailPage() {
       setTempStartDate(formatDateForInput(graphDateRange.start));
       setTempEndDate(formatDateForInput(graphDateRange.end));
     }
-  }, [dateRangePickerOpen, graphDateRange]);
+  }, [activeDateRangePicker, graphDateRange]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -311,7 +319,7 @@ export default function ResultDetailPage() {
       } else {
         setGraphDateRange({ start, end });
       }
-      setDateRangePickerOpen(false);
+      setActiveDateRangePicker(null);
     }
   };
 
@@ -325,7 +333,7 @@ export default function ResultDetailPage() {
     };
     setTempStartDate(formatDateForInput(graphDateRange.start));
     setTempEndDate(formatDateForInput(graphDateRange.end));
-    setDateRangePickerOpen(false);
+    setActiveDateRangePicker(null);
   };
 
   const handleQuickDateRange = (range: string) => {
@@ -360,7 +368,7 @@ export default function ResultDetailPage() {
     }
     
     setGraphDateRange({ start, end });
-    setDateRangePickerOpen(false);
+    setActiveDateRangePicker(null);
   };
 
   const handleGenerateReport = () => {
@@ -633,16 +641,16 @@ export default function ResultDetailPage() {
             {/* Date Range Picker Dropdown */}
             <div className="relative date-range-picker-container">
               <button
-                onClick={() => setDateRangePickerOpen(!dateRangePickerOpen)}
+                onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
                 className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
               >
                 <span className="truncate">
                   {formatDateRange(graphDateRange.start, graphDateRange.end)}
                 </span>
-                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${dateRangePickerOpen ? 'transform rotate-180' : ''}`} />
+                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
               </button>
               
-              {dateRangePickerOpen && (
+              {activeDateRangePicker === 'header' && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
                   <div className="space-y-4">
                     <div>
@@ -966,6 +974,72 @@ export default function ResultDetailPage() {
                   >
                     Last quarter
                   </button>
+                  <div className="relative date-range-picker-container">
+                    <button
+                      onClick={() => {
+                        if (activeDateRangePicker === 'quick') {
+                          setActiveDateRangePicker(null);
+                          return;
+                        }
+                        const end = new Date();
+                        const start = new Date();
+                        start.setMonth(start.getMonth() - 3);
+                        setGraphDateRange({ start, end });
+                        setActiveDateRangePicker('quick');
+                      }}
+                      className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap border border-gray-300 bg-white flex items-center gap-2"
+                    >
+                      <span>Custom range</span>
+                      <span className="text-xs text-gray-500">
+                        {formatDateRange(graphDateRange.start, graphDateRange.end)}
+                      </span>
+                      <MdKeyboardArrowDown className={`w-4 h-4 text-gray-500 transition-transform ${activeDateRangePicker === 'quick' ? 'transform rotate-180' : ''}`} />
+                    </button>
+
+                    {activeDateRangePicker === 'quick' && (
+                      <div className="absolute z-10 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Start Date
+                            </label>
+                            <input
+                              type="date"
+                              value={tempStartDate}
+                              onChange={(e) => setTempStartDate(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              End Date
+                            </label>
+                            <input
+                              type="date"
+                              value={tempEndDate}
+                              onChange={(e) => setTempEndDate(e.target.value)}
+                              min={tempStartDate}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={handleDateRangeApply}
+                              className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                            >
+                              Apply
+                            </button>
+                            <button
+                              onClick={handleDateRangeCancel}
+                              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

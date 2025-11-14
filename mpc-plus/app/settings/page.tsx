@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
+import { NAVIGATION } from '../../constants';
 import {
   getSettings,
   getDefaultAppSettings,
@@ -58,6 +60,7 @@ const SETTINGS_SECTIONS = [
 ] as const;
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +84,25 @@ export default function SettingsPage() {
 
     loadUser();
   }, []);
+
+  // Handle browser back button to navigate to calendar (results) page
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = () => {
+      // When user clicks back from settings, navigate to results page
+      router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+    };
+
+    // Add a history entry so we can intercept the back button
+    window.history.pushState({ fromSettings: true }, '', window.location.href);
+    
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [router]);
 
   const handleThemeChange = (theme: Theme) => {
     updateTheme(theme);
