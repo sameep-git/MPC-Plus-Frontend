@@ -36,6 +36,27 @@ const getMetricKey = (metricName: string): string => {
   return metricName.replace(/[^a-zA-Z0-9]/g, '_');
 };
 
+// Extract beam type from check ID (e.g., "beam-2.5x" -> "2.5x", "beam-6xfff" -> "6xFFF")
+const getBeamTypeFromCheckId = (checkId: string): string | null => {
+  if (checkId.startsWith('beam-')) {
+    const beamType = checkId.replace('beam-', '');
+    // Capitalize FFF in 6xFFF
+    if (beamType === '6xfff') {
+      return '6xFFF';
+    }
+    return beamType;
+  }
+  return null;
+};
+
+// Create beam-specific metric name
+const createBeamSpecificMetricName = (baseMetricName: string, beamType: string | null): string => {
+  if (!beamType) {
+    return baseMetricName;
+  }
+  return `${baseMetricName} (${beamType})`;
+};
+
 const getDefaultDomainForMetric = (metricName: string): [number, number] => {
   const lowerMetric = metricName.toLowerCase();
 
@@ -154,61 +175,51 @@ export default function ResultDetailPage() {
   const [graphThresholdSettings, setGraphThresholdSettings] = useState(() => getGraphThresholdSettings());
   const [baselineSettings, setBaselineSettings] = useState(() => getBaselineSettingsSnapshot());
 
+  // Base metric names (without beam type)
+  const baseMetricNames = [
+    'Output Change (%)',
+    'Uniformity Change (%)',
+    'Center Shift',
+  ];
+
+  // Create check results with beam-specific metric names
+  const createCheckResults = (): CheckResult[] => {
+    const results: CheckResult[] = [
+      {
+        id: 'geometry',
+        name: 'Geometry Check',
+        status: 'PASS',
+        metrics: [],
+      },
+    ];
+
+    // Add beam checks with beam-specific metrics
+    const beamIds = ['beam-2.5x', 'beam-6x', 'beam-6xfff', 'beam-10x'];
+    beamIds.forEach((beamId) => {
+      const beamType = getBeamTypeFromCheckId(beamId);
+      const beamName = beamType ? `Beam Check (${beamType})` : `Beam Check`;
+      
+      const metrics: CheckMetric[] = baseMetricNames.map((baseName) => ({
+        name: createBeamSpecificMetricName(baseName, beamType),
+        value: '',
+        thresholds: '',
+        absoluteValue: '',
+        status: 'pass' as const,
+      }));
+
+      results.push({
+        id: beamId,
+        name: beamName,
+        status: 'PASS',
+        metrics,
+      });
+    });
+
+    return results;
+  };
+
   // Mock check results
-  const [checkResults] = useState<CheckResult[]>([
-    {
-      id: 'geometry',
-      name: 'Geometry Check',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-2.5x',
-      name: 'Beam Check (2.5x)',
-      status: 'PASS',
-      metrics: [
-        {
-          name: 'Output Change (%)',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-        {
-          name: 'Uniformity Change (%)',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-        {
-          name: 'Center Shift',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-      ],
-    },
-    {
-      id: 'beam-6x',
-      name: 'Beam Check (6x)',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-6xfff',
-      name: 'Beam Check (6xFFF)',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-10x',
-      name: 'Beam Check (10x)',
-      status: 'PASS',
-      metrics: [],
-    },
-  ]);
+  const [checkResults] = useState<CheckResult[]>(createCheckResults());
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() => 
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
