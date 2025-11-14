@@ -26,12 +26,27 @@ export interface BeamThresholds {
   };
 }
 
+export type BaselineMode = 'date' | 'manual';
+
+export interface BaselineManualValues {
+  outputChange: number;
+  uniformityChange: number;
+  centerShift: number;
+}
+
+export interface BaselineSettings {
+  mode: BaselineMode;
+  date?: string;
+  manualValues: BaselineManualValues;
+}
+
 export interface AppSettings {
   theme: Theme;
   thresholds: BeamThresholds;
   graphThresholdTopPercent: number;
   graphThresholdBottomPercent: number;
   graphThresholdColor: string;
+  baseline: BaselineSettings;
 }
 
 const DEFAULT_THRESHOLDS: BeamThresholds = {
@@ -57,19 +72,40 @@ const DEFAULT_THRESHOLDS: BeamThresholds = {
   },
 };
 
-const DEFAULT_SETTINGS: AppSettings = {
+const DEFAULT_BASELINE_SETTINGS: BaselineSettings = {
+  mode: 'date',
+  date: undefined,
+  manualValues: {
+    outputChange: 0,
+    uniformityChange: 0,
+    centerShift: 0,
+  },
+};
+
+const getDefaultBaselineSettings = (): BaselineSettings => ({
+  ...DEFAULT_BASELINE_SETTINGS,
+  manualValues: { ...DEFAULT_BASELINE_SETTINGS.manualValues },
+});
+
+const getDefaultThresholds = (): BeamThresholds =>
+  JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+
+const getDefaultSettings = (): AppSettings => ({
   theme: 'light',
-  thresholds: DEFAULT_THRESHOLDS,
+  thresholds: getDefaultThresholds(),
   graphThresholdTopPercent: 16.67,
   graphThresholdBottomPercent: 16.67,
   graphThresholdColor: '#fef3c7',
-};
+  baseline: getDefaultBaselineSettings(),
+});
 
 const STORAGE_KEY = 'mpc-plus-settings';
 
 export const getSettings = (): AppSettings => {
+  const defaults = getDefaultSettings();
+
   if (typeof window === 'undefined') {
-    return DEFAULT_SETTINGS;
+    return defaults;
   }
 
   try {
@@ -77,20 +113,30 @@ export const getSettings = (): AppSettings => {
     if (stored) {
       const parsed = JSON.parse(stored);
       // Merge with defaults to handle new settings fields
+      const mergedBaseline: BaselineSettings = {
+        ...defaults.baseline,
+        ...parsed.baseline,
+        manualValues: {
+          ...defaults.baseline.manualValues,
+          ...(parsed.baseline?.manualValues ?? {}),
+        },
+      };
+
       return {
-        ...DEFAULT_SETTINGS,
+        ...defaults,
         ...parsed,
         thresholds: {
-          ...DEFAULT_THRESHOLDS,
+          ...defaults.thresholds,
           ...parsed.thresholds,
         },
+        baseline: mergedBaseline,
       };
     }
   } catch (error) {
     console.error('Error loading settings:', error);
   }
 
-  return DEFAULT_SETTINGS;
+  return defaults;
 };
 
 export const saveSettings = (settings: AppSettings): void => {
@@ -134,6 +180,21 @@ export const updateGraphThresholds = (
   if (color !== undefined) settings.graphThresholdColor = color;
   saveSettings(settings);
 };
+
+export const updateBaselineSettings = (baseline: Partial<BaselineSettings>): void => {
+  const settings = getSettings();
+  settings.baseline = {
+    ...settings.baseline,
+    ...baseline,
+    manualValues: {
+      ...settings.baseline.manualValues,
+      ...(baseline.manualValues ?? {}),
+    },
+  };
+  saveSettings(settings);
+};
+
+export const getDefaultAppSettings = (): AppSettings => getDefaultSettings();
 
 export const applyTheme = (theme: Theme): void => {
   if (typeof window === 'undefined') {

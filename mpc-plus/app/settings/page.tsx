@@ -1,17 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
+import { NAVIGATION } from '../../constants';
 import {
   getSettings,
+  getDefaultAppSettings,
   saveSettings,
   updateTheme,
   updateThresholds,
   updateGraphThresholds,
+  updateBaselineSettings,
   type Theme,
   type BeamThresholds,
   type AppSettings,
+  type BaselineMode,
+  type BaselineManualValues,
 } from '../../lib/settings';
 
 const BEAM_NAMES = {
@@ -27,7 +33,34 @@ const METRIC_NAMES = {
   centerShift: 'Center Shift',
 } as const;
 
+const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: string; helper?: string }> = [
+  {
+    key: 'outputChange',
+    label: 'Output Change (%)',
+    helper: 'Baseline output delta for MPC comparisons.',
+  },
+  {
+    key: 'uniformityChange',
+    label: 'Uniformity Change (%)',
+    helper: 'Baseline uniformity delta to compare day-to-day changes.',
+  },
+  {
+    key: 'centerShift',
+    label: 'Center Shift',
+    helper: 'Baseline couch/beam center shift reference.',
+  },
+];
+
+const SETTINGS_SECTIONS = [
+  { id: 'theme-settings', label: 'Theme' },
+  { id: 'beam-threshold-settings', label: 'Beam Thresholds' },
+  { id: 'graph-threshold-settings', label: 'Graph Threshold' },
+  { id: 'baseline-settings', label: 'Baseline' },
+  { id: 'other-settings', label: 'Other Settings' },
+] as const;
+
 export default function SettingsPage() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +84,25 @@ export default function SettingsPage() {
 
     loadUser();
   }, []);
+
+  // Handle browser back button to navigate to calendar (results) page
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = () => {
+      // When user clicks back from settings, navigate to results page
+      router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+    };
+
+    // Add a history entry so we can intercept the back button
+    window.history.pushState({ fromSettings: true }, '', window.location.href);
+    
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [router]);
 
   const handleThemeChange = (theme: Theme) => {
     updateTheme(theme);
@@ -90,35 +142,66 @@ export default function SettingsPage() {
     updateGraphThresholds(topPercent, bottomPercent, color);
   };
 
-  const handleReset = () => {
-    const defaultSettings = getSettings();
-    // Reset to true defaults
-    defaultSettings.theme = 'light';
-    defaultSettings.graphThresholdTopPercent = 16.67;
-    defaultSettings.graphThresholdBottomPercent = 16.67;
-    defaultSettings.graphThresholdColor = '#fef3c7';
-    defaultSettings.thresholds = {
-      'beam-2.5x': {
-        outputChange: { min: -3, max: 3 },
-        uniformityChange: { min: -2.5, max: 2.5 },
-        centerShift: { min: -2, max: 2 },
-      },
-      'beam-6x': {
-        outputChange: { min: -3, max: 3 },
-        uniformityChange: { min: -2.5, max: 2.5 },
-        centerShift: { min: -2, max: 2 },
-      },
-      'beam-6xfff': {
-        outputChange: { min: -3, max: 3 },
-        uniformityChange: { min: -2.5, max: 2.5 },
-        centerShift: { min: -2, max: 2 },
-      },
-      'beam-10x': {
-        outputChange: { min: -3, max: 3 },
-        uniformityChange: { min: -2.5, max: 2.5 },
-        centerShift: { min: -2, max: 2 },
-      },
+  const ensureIsoDate = (date: Date) => date.toISOString().split('T')[0];
+
+  const handleBaselineModeChange = (mode: BaselineMode) => {
+    const nextDate = settings.baseline.date ?? ensureIsoDate(new Date());
+    const updatedBaseline = {
+      ...settings.baseline,
+      mode,
+      date: mode === 'date' ? nextDate : settings.baseline.date,
     };
+
+    setSettings((prev) => ({ ...prev, baseline: updatedBaseline }));
+    updateBaselineSettings({
+      mode,
+      ...(mode === 'date' ? { date: nextDate } : {}),
+    });
+  };
+
+  const handleBaselineDateChange = (dateString: string) => {
+    const normalizedDate = dateString || undefined;
+    setSettings((prev) => ({
+      ...prev,
+      baseline: {
+        ...prev.baseline,
+        date: normalizedDate,
+        mode: 'date',
+      },
+    }));
+    updateBaselineSettings({ date: normalizedDate, mode: 'date' });
+  };
+
+  const handleManualBaselineChange = (field: keyof BaselineManualValues, value: number) => {
+    const updatedManualValues: BaselineManualValues = {
+      ...settings.baseline.manualValues,
+      [field]: value,
+    };
+    setSettings((prev) => ({
+      ...prev,
+      baseline: {
+        ...prev.baseline,
+        manualValues: updatedManualValues,
+      },
+    }));
+    updateBaselineSettings({ manualValues: updatedManualValues });
+  };
+
+  const handleBaselineUseToday = () => {
+    const today = ensureIsoDate(new Date());
+    setSettings((prev) => ({
+      ...prev,
+      baseline: {
+        ...prev.baseline,
+        mode: 'date',
+        date: today,
+      },
+    }));
+    updateBaselineSettings({ mode: 'date', date: today });
+  };
+
+  const handleReset = () => {
+    const defaultSettings = getDefaultAppSettings();
     saveSettings(defaultSettings);
     setSettings(defaultSettings);
     setSaved(true);
@@ -132,6 +215,21 @@ export default function SettingsPage() {
       <main className="p-6 max-w-6xl mx-auto">
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-8">Settings</h1>
 
+        <nav
+          aria-label="Settings sections"
+          className="mb-8 flex flex-wrap gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm"
+        >
+          {SETTINGS_SECTIONS.map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 transition-colors"
+            >
+              {section.label}
+            </a>
+          ))}
+        </nav>
+
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -140,7 +238,10 @@ export default function SettingsPage() {
         )}
 
         {/* Theme Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="theme-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
           <p className="text-gray-600 dark:text-gray-300 mb-4">
             Choose your preferred theme for the application.
@@ -170,7 +271,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Beam Threshold Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="beam-threshold-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Beam Threshold Values
           </h2>
@@ -241,7 +345,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Graph Threshold Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="graph-threshold-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Graph Threshold Settings
           </h2>
@@ -303,8 +410,103 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Baseline Settings */}
+        <section
+          id="baseline-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Baseline Settings</h2>
+          <p className="text-gray-600 dark:text-gray-300 mb-6">
+            Choose how graph baselines are defined. Baselines appear as a horizontal line on result graphs, and metric
+            values are plotted as their change relative to this baseline.
+          </p>
+
+          <div className="space-y-6">
+            <div className="flex flex-wrap gap-3">
+              <label
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  settings.baseline.mode === 'date'
+                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:border-purple-400 dark:text-purple-200'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="baseline-mode"
+                  value="date"
+                  checked={settings.baseline.mode === 'date'}
+                  onChange={() => handleBaselineModeChange('date')}
+                  className="text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-sm font-medium">Use values from a specific date</span>
+              </label>
+              <label
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  settings.baseline.mode === 'manual'
+                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:border-purple-400 dark:text-purple-200'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="baseline-mode"
+                  value="manual"
+                  checked={settings.baseline.mode === 'manual'}
+                  onChange={() => handleBaselineModeChange('manual')}
+                  className="text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-sm font-medium">Set manual baseline values</span>
+              </label>
+            </div>
+
+            {settings.baseline.mode === 'date' && (
+              <div className="w-full md:w-auto">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Baseline Date
+                </label>
+                <div className="flex flex-row flex-wrap gap-3 items-center">
+                  <input
+                    type="date"
+                    value={settings.baseline.date ?? ''}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => handleBaselineDateChange(e.target.value)}
+                    className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 md:flex-grow-0 md:w-64"
+                  />
+                  <Button onClick={handleBaselineUseToday} className="flex-shrink-0">
+                    Use Today
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Graph values will show the difference from measurements captured on this date.
+                </p>
+              </div>
+            )}
+
+            {settings.baseline.mode === 'manual' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {MANUAL_BASELINE_FIELDS.map(({ key, label, helper }) => (
+                  <div key={key} className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{label}</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={settings.baseline.manualValues[key]}
+                      onChange={(e) => handleManualBaselineChange(key, parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    {helper && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Other Settings */}
-        <section className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <section
+          id="other-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Other Settings
           </h2>

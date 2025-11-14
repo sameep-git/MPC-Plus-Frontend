@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   LineChart, 
@@ -10,7 +10,8 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  ReferenceArea
+  ReferenceArea,
+  ReferenceLine
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose, MdClear } from 'react-icons/md';
 import { fetchUser, handleApiError, type User } from '../../lib/api';
@@ -25,6 +26,53 @@ const getGraphThresholdSettings = () => {
     bottomPercent: settings.graphThresholdBottomPercent ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT,
     color: settings.graphThresholdColor ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR,
   };
+};
+
+const getBaselineSettingsSnapshot = () => getSettings().baseline;
+
+const DEFAULT_Y_AXIS_DOMAIN = GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
+
+const getMetricKey = (metricName: string): string => {
+  return metricName.replace(/[^a-zA-Z0-9]/g, '_');
+};
+
+// Extract beam type from check ID (e.g., "beam-2.5x" -> "2.5x", "beam-6xfff" -> "6xFFF")
+const getBeamTypeFromCheckId = (checkId: string): string | null => {
+  if (checkId.startsWith('beam-')) {
+    const beamType = checkId.replace('beam-', '');
+    // Capitalize FFF in 6xFFF
+    if (beamType === '6xfff') {
+      return '6xFFF';
+    }
+    return beamType;
+  }
+  return null;
+};
+
+// Create beam-specific metric name
+const createBeamSpecificMetricName = (baseMetricName: string, beamType: string | null): string => {
+  if (!beamType) {
+    return baseMetricName;
+  }
+  return `${baseMetricName} (${beamType})`;
+};
+
+const getDefaultDomainForMetric = (metricName: string): [number, number] => {
+  const lowerMetric = metricName.toLowerCase();
+
+  if (lowerMetric.includes('output change')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.OUTPUT_CHANGE as [number, number];
+  }
+
+  if (lowerMetric.includes('uniformity change')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.UNIFORMITY_CHANGE as [number, number];
+  }
+
+  if (lowerMetric.includes('center shift')) {
+    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.CENTER_SHIFT as [number, number];
+  }
+
+  return DEFAULT_Y_AXIS_DOMAIN;
 };
 
 // Mock data for check results
@@ -46,6 +94,7 @@ interface CheckResult {
 // Mock data for graph
 interface GraphDataPoint {
   date: string;
+  fullDate: string;
   [key: string]: string | number; // Allow dynamic metric keys
 }
 
@@ -55,14 +104,16 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
   const currentDate = new Date(startDate);
   
   while (currentDate <= endDate) {
-    const dataPoint: any = {
+    const isoDate = currentDate.toISOString().split('T')[0];
+    const dataPoint: GraphDataPoint = {
       date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      fullDate: isoDate,
     };
     
     // Generate data for each selected metric
     selectedMetrics.forEach((metricName) => {
       // Create a sanitized key for the metric (remove special characters)
-      const key = metricName.replace(/[^a-zA-Z0-9]/g, '_');
+      const key = getMetricKey(metricName);
       
       // Generate value based on metric type
       let value = Math.random() * 12 - 6;
@@ -95,6 +146,14 @@ export default function ResultDetailPage() {
   const dateParam = searchParams.get('date');
   const selectedDate = dateParam ? new Date(dateParam) : new Date();
   
+  // Remove date query parameter from URL after reading it
+  useEffect(() => {
+    if (dateParam && typeof window !== 'undefined') {
+      // Replace the URL without the query parameter
+      router.replace('/result-detail', { scroll: false });
+    }
+  }, [dateParam, router]);
+  
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
   const [showGraph, setShowGraph] = useState<boolean>(false);
@@ -108,68 +167,59 @@ export default function ResultDetailPage() {
     return { start, end };
   });
   
-  const [dateRangePickerOpen, setDateRangePickerOpen] = useState<boolean>(false);
+  const [activeDateRangePicker, setActiveDateRangePicker] = useState<'header' | 'quick' | null>(null);
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
   // Threshold settings for graph shading sourced from global settings
   const [graphThresholdSettings, setGraphThresholdSettings] = useState(() => getGraphThresholdSettings());
+  const [baselineSettings, setBaselineSettings] = useState(() => getBaselineSettingsSnapshot());
+
+  // Base metric names (without beam type)
+  const baseMetricNames = [
+    'Output Change (%)',
+    'Uniformity Change (%)',
+    'Center Shift',
+  ];
+
+  // Create check results with beam-specific metric names
+  const createCheckResults = (): CheckResult[] => {
+    const results: CheckResult[] = [
+      {
+        id: 'geometry',
+        name: 'Geometry Check',
+        status: 'PASS',
+        metrics: [],
+      },
+    ];
+
+    // Add beam checks with beam-specific metrics
+    const beamIds = ['beam-2.5x', 'beam-6x', 'beam-6xfff', 'beam-10x'];
+    beamIds.forEach((beamId) => {
+      const beamType = getBeamTypeFromCheckId(beamId);
+      const beamName = beamType ? `Beam Check (${beamType})` : `Beam Check`;
+      
+      const metrics: CheckMetric[] = baseMetricNames.map((baseName) => ({
+        name: createBeamSpecificMetricName(baseName, beamType),
+        value: '',
+        thresholds: '',
+        absoluteValue: '',
+        status: 'pass' as const,
+      }));
+
+      results.push({
+        id: beamId,
+        name: beamName,
+        status: 'PASS',
+        metrics,
+      });
+    });
+
+    return results;
+  };
 
   // Mock check results
-  const [checkResults] = useState<CheckResult[]>([
-    {
-      id: 'geometry',
-      name: 'Geometry Check',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-2.5x',
-      name: 'Beam Check (2.5x)',
-      status: 'PASS',
-      metrics: [
-        {
-          name: 'Output Change (%)',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-        {
-          name: 'Uniformity Change (%)',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-        {
-          name: 'Center Shift',
-          value: '',
-          thresholds: '',
-          absoluteValue: '',
-          status: 'pass',
-        },
-      ],
-    },
-    {
-      id: 'beam-6x',
-      name: 'Beam Check (6x)',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-6xfff',
-      name: 'Beam Check (6xFFF)',
-      status: 'PASS',
-      metrics: [],
-    },
-    {
-      id: 'beam-10x',
-      name: 'Beam Check (10x)',
-      status: 'PASS',
-      metrics: [],
-    },
-  ]);
+  const [checkResults] = useState<CheckResult[]>(createCheckResults());
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() => 
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -198,17 +248,18 @@ export default function ResultDetailPage() {
   }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
 
   useEffect(() => {
-    const refreshGraphThresholds = () => {
+    const refreshSettings = () => {
       setGraphThresholdSettings(getGraphThresholdSettings());
+      setBaselineSettings(getBaselineSettingsSnapshot());
     };
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('focus', refreshGraphThresholds);
+      window.addEventListener('focus', refreshSettings);
     }
 
     return () => {
       if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', refreshGraphThresholds);
+        window.removeEventListener('focus', refreshSettings);
       }
     };
   }, []);
@@ -220,22 +271,22 @@ export default function ResultDetailPage() {
       if (dropdownOpen && !target.closest('.metric-dropdown-container')) {
         setDropdownOpen(false);
       }
-      if (dateRangePickerOpen && !target.closest('.date-range-picker-container')) {
-        setDateRangePickerOpen(false);
+      if (activeDateRangePicker && !target.closest('.date-range-picker-container')) {
+        setActiveDateRangePicker(null);
       }
     };
 
-    if (dropdownOpen || dateRangePickerOpen) {
+    if (dropdownOpen || activeDateRangePicker) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [dropdownOpen, dateRangePickerOpen]);
+  }, [dropdownOpen, activeDateRangePicker]);
 
   // Initialize temp dates when picker opens
   useEffect(() => {
-    if (dateRangePickerOpen) {
+    if (activeDateRangePicker) {
       const formatDateForInput = (date: Date): string => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -245,7 +296,7 @@ export default function ResultDetailPage() {
       setTempStartDate(formatDateForInput(graphDateRange.start));
       setTempEndDate(formatDateForInput(graphDateRange.end));
     }
-  }, [dateRangePickerOpen, graphDateRange]);
+  }, [activeDateRangePicker, graphDateRange]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -279,7 +330,7 @@ export default function ResultDetailPage() {
       } else {
         setGraphDateRange({ start, end });
       }
-      setDateRangePickerOpen(false);
+      setActiveDateRangePicker(null);
     }
   };
 
@@ -293,7 +344,7 @@ export default function ResultDetailPage() {
     };
     setTempStartDate(formatDateForInput(graphDateRange.start));
     setTempEndDate(formatDateForInput(graphDateRange.end));
-    setDateRangePickerOpen(false);
+    setActiveDateRangePicker(null);
   };
 
   const handleQuickDateRange = (range: string) => {
@@ -328,7 +379,7 @@ export default function ResultDetailPage() {
     }
     
     setGraphDateRange({ start, end });
-    setDateRangePickerOpen(false);
+    setActiveDateRangePicker(null);
   };
 
   const handleGenerateReport = () => {
@@ -338,38 +389,7 @@ export default function ResultDetailPage() {
   const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS_SHORT;
   const monthNames = CALENDAR_CONSTANTS.MONTH_NAMES;
 
-  // Calculate Y-axis domain based on selected metrics
-  const getYAxisDomain = (): [number, number] => {
-    // Use the widest range needed for any selected metric
-    if (selectedMetrics.size === 0) {
-      return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
-    }
-    
-    let hasOutputChange = false;
-    let hasUniformityChange = false;
-    let hasCenterShift = false;
-    
-    selectedMetrics.forEach((metric) => {
-      if (metric.includes('Output Change')) hasOutputChange = true;
-      if (metric.includes('Uniformity Change')) hasUniformityChange = true;
-      if (metric.includes('Center Shift')) hasCenterShift = true;
-    });
-    
-    // Return the widest range
-    if (hasOutputChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.OUTPUT_CHANGE as [number, number];
-    if (hasUniformityChange) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.UNIFORMITY_CHANGE as [number, number];
-    if (hasCenterShift) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.CENTER_SHIFT as [number, number];
-    return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
-  };
-
-  // Calculate threshold values for shading
-  const getThresholdValues = () => {
-    const [min, max] = getYAxisDomain();
-    const range = max - min;
-    const topThreshold = max - (range * graphThresholdSettings.topPercent / 100);
-    const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent / 100);
-    return { topThreshold, bottomThreshold, min, max };
-  };
+  // Calculate Y-axis domain based on selected metrics and data
 
   // Get all available metrics from all beams
   const getAllAvailableMetrics = (): string[] => {
@@ -402,15 +422,201 @@ export default function ResultDetailPage() {
     return GRAPH_CONSTANTS.METRIC_COLORS[index % GRAPH_CONSTANTS.METRIC_COLORS.length];
   };
 
-  // Sanitize metric name for use as dataKey
-  const getMetricKey = (metricName: string): string => {
-    return metricName.replace(/[^a-zA-Z0-9]/g, '_');
+  const getManualBaselineValue = (metricName: string): number => {
+    const lowerMetric = metricName.toLowerCase();
+    if (lowerMetric.includes('output change')) {
+      return baselineSettings.manualValues.outputChange;
+    }
+    if (lowerMetric.includes('uniformity change')) {
+      return baselineSettings.manualValues.uniformityChange;
+    }
+    if (lowerMetric.includes('center shift')) {
+      return baselineSettings.manualValues.centerShift;
+    }
+    return 0;
+  };
+
+  const baselineComputation = useMemo(() => {
+    const valuesByMetric: Record<string, number | null> = {};
+    let baselineDateInRange = false;
+    let baselineDataPoint: GraphDataPoint | undefined;
+
+    if (baselineSettings.mode === 'date' && baselineSettings.date) {
+      baselineDataPoint = graphData.find((point) => point.fullDate === baselineSettings.date);
+      baselineDateInRange = Boolean(baselineDataPoint);
+
+      if (!baselineDataPoint && selectedMetrics.size > 0) {
+        const baselineDate = new Date(baselineSettings.date);
+        if (!Number.isNaN(baselineDate.getTime())) {
+          const fallbackData = generateGraphData(baselineDate, baselineDate, selectedMetrics);
+          baselineDataPoint = fallbackData[0];
+        }
+      }
+    }
+
+    Array.from(selectedMetrics).forEach((metricName) => {
+      const key = getMetricKey(metricName);
+      let baselineValue: number | null = null;
+
+      if (baselineSettings.mode === 'manual') {
+        baselineValue = getManualBaselineValue(metricName);
+      } else if (baselineSettings.mode === 'date' && baselineDataPoint) {
+        const candidate = baselineDataPoint[key];
+        baselineValue = typeof candidate === 'number' ? candidate : null;
+      }
+
+      valuesByMetric[key] = baselineValue;
+    });
+
+    const hasNumericBaseline = Object.values(valuesByMetric).some(
+      (value) => typeof value === 'number'
+    );
+
+    return {
+      valuesByMetric,
+      hasNumericBaseline,
+      baselineDateInRange,
+      requestedDate: baselineSettings.date,
+    };
+  }, [baselineSettings, graphData, selectedMetrics]);
+
+  const normalizedGraphData = useMemo(() => {
+    if (!baselineComputation.hasNumericBaseline) {
+      return graphData;
+    }
+
+    return graphData.map((point) => {
+      const nextPoint: GraphDataPoint = { ...point };
+
+      Object.entries(baselineComputation.valuesByMetric).forEach(([key, baselineValue]) => {
+        if (typeof baselineValue === 'number') {
+          const rawValue = point[key];
+          if (typeof rawValue === 'number') {
+            nextPoint[key] = Number((rawValue - baselineValue).toFixed(3));
+          }
+        }
+      });
+
+      return nextPoint;
+    });
+  }, [graphData, baselineComputation]);
+
+  const baselineSummary = useMemo(() => {
+    if (baselineSettings.mode === 'date') {
+      if (!baselineSettings.date) {
+        return {
+          message: 'Select a baseline date in Settings to see changes relative to that day.',
+          tone: 'muted' as const,
+        };
+      }
+
+      if (selectedMetrics.size > 0) {
+        if (baselineComputation.baselineDateInRange) {
+          return {
+            message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day.`,
+            tone: 'info' as const,
+          };
+        }
+
+        return {
+          message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day even though it falls outside the visible range.`,
+          tone: 'info' as const,
+        };
+      }
+
+      return {
+        message: `Baseline from ${baselineSettings.date}. Select metrics to view deltas relative to that day.`,
+        tone: 'muted' as const,
+      };
+    }
+
+    const { manualValues } = baselineSettings;
+    return {
+      message: `Baseline uses manual values — Output ${manualValues.outputChange}, Uniformity ${manualValues.uniformityChange}, Center Shift ${manualValues.centerShift}.`,
+      tone: 'info' as const,
+    };
+  }, [baselineSettings, baselineComputation.baselineDateInRange, selectedMetrics.size]);
+
+  const getBaselineBannerClasses = () => {
+    switch (baselineSummary.tone) {
+      case 'warning':
+        return 'bg-amber-50 border-amber-200 text-amber-700';
+      case 'info':
+        return 'bg-blue-50 border-blue-200 text-blue-700';
+      default:
+        return 'bg-gray-50 border-gray-200 text-gray-600';
+    }
   };
 
   // Clear all selected metrics
   const handleClearSelections = () => {
     setSelectedMetrics(new Set());
   };
+
+  const chartData = baselineComputation.hasNumericBaseline ? normalizedGraphData : graphData;
+
+  const yAxisDomain = useMemo<[number, number]>(() => {
+    if (selectedMetrics.size === 0) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    const metrics = Array.from(selectedMetrics);
+    let domainMin = Number.POSITIVE_INFINITY;
+    let domainMax = Number.NEGATIVE_INFINITY;
+
+    metrics.forEach((metricName) => {
+      const [defaultMin, defaultMax] = getDefaultDomainForMetric(metricName);
+      domainMin = Math.min(domainMin, defaultMin);
+      domainMax = Math.max(domainMax, defaultMax);
+    });
+
+    if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax)) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    chartData.forEach((point) => {
+      metrics.forEach((metricName) => {
+        const key = getMetricKey(metricName);
+        const value = point[key];
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          domainMin = Math.min(domainMin, value);
+          domainMax = Math.max(domainMax, value);
+        }
+      });
+    });
+
+    if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax)) {
+      return DEFAULT_Y_AXIS_DOMAIN;
+    }
+
+    if (domainMin === domainMax) {
+      const padding = Math.max(Math.abs(domainMin) * 0.1, 0.5);
+      return [domainMin - padding, domainMax + padding];
+    }
+
+    return [domainMin, domainMax];
+  }, [chartData, selectedMetrics]);
+
+  const thresholdValues = useMemo(() => {
+    const [min, max] = yAxisDomain;
+    const range = max - min;
+
+    if (range <= 0) {
+      return {
+        topThreshold: max,
+        bottomThreshold: min,
+        min,
+        max,
+      };
+    }
+
+    const topThreshold = max - (range * graphThresholdSettings.topPercent) / 100;
+    const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent) / 100;
+
+    return { topThreshold, bottomThreshold, min, max };
+  }, [graphThresholdSettings.bottomPercent, graphThresholdSettings.topPercent, yAxisDomain]);
+
+  const { topThreshold, bottomThreshold, min: thresholdMin, max: thresholdMax } = thresholdValues;
 
   if (loading) {
     return (
@@ -446,16 +652,16 @@ export default function ResultDetailPage() {
             {/* Date Range Picker Dropdown */}
             <div className="relative date-range-picker-container">
               <button
-                onClick={() => setDateRangePickerOpen(!dateRangePickerOpen)}
+                onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
                 className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
               >
                 <span className="truncate">
                   {formatDateRange(graphDateRange.start, graphDateRange.end)}
                 </span>
-                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${dateRangePickerOpen ? 'transform rotate-180' : ''}`} />
+                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
               </button>
               
-              {dateRangePickerOpen && (
+              {activeDateRangePicker === 'header' && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
                   <div className="space-y-4">
                     <div>
@@ -662,11 +868,22 @@ export default function ResultDetailPage() {
                   </button>
                 </div>
               </div>
+
+              {baselineSummary && (
+                <div className={`mb-4 px-4 py-3 border rounded-lg text-sm ${getBaselineBannerClasses()}`}>
+                  {baselineSummary.message}
+                  {baselineSummary.tone === 'warning' && (
+                    <span className="ml-1">
+                      Adjust ranges or update the baseline in Settings.
+                    </span>
+                  )}
+                </div>
+              )}
               
               {/* Graph */}
               <div className="h-96 mb-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={graphData}>
+                  <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis 
                       dataKey="date" 
@@ -674,7 +891,7 @@ export default function ResultDetailPage() {
                       style={{ fontSize: '12px' }}
                     />
                     <YAxis 
-                      domain={getYAxisDomain()}
+                      domain={yAxisDomain}
                       stroke="#6b7280"
                       style={{ fontSize: '12px' }}
                     />
@@ -685,27 +902,36 @@ export default function ResultDetailPage() {
                         borderRadius: '8px'
                       }}
                     />
-                    {(() => {
-                      const { topThreshold, bottomThreshold, min, max } = getThresholdValues();
-                      return (
-                        <>
-                          {/* Top threshold shading */}
-                          <ReferenceArea
-                            y1={topThreshold}
-                            y2={max}
-                            fill={graphThresholdSettings.color}
-                            fillOpacity={0.3}
-                          />
-                          {/* Bottom threshold shading */}
-                          <ReferenceArea
-                            y1={min}
-                            y2={bottomThreshold}
-                            fill={graphThresholdSettings.color}
-                            fillOpacity={0.3}
-                          />
-                        </>
-                      );
-                    })()}
+                    <>
+                      {/* Top threshold shading */}
+                      <ReferenceArea
+                        y1={topThreshold}
+                        y2={thresholdMax}
+                        fill={graphThresholdSettings.color}
+                        fillOpacity={0.3}
+                      />
+                      {/* Bottom threshold shading */}
+                      <ReferenceArea
+                        y1={thresholdMin}
+                        y2={bottomThreshold}
+                        fill={graphThresholdSettings.color}
+                        fillOpacity={0.3}
+                      />
+                    </>
+                    {baselineComputation.hasNumericBaseline && (
+                      <ReferenceLine
+                        y={0}
+                        stroke="#1f2937"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        label={{
+                          value: 'Baseline',
+                          position: 'right',
+                          fill: '#1f2937',
+                          fontSize: 12,
+                        }}
+                      />
+                    )}
                     {Array.from(selectedMetrics).map((metricName, index) => {
                       const dataKey = getMetricKey(metricName);
                       const color = getMetricColor(index);
@@ -759,6 +985,72 @@ export default function ResultDetailPage() {
                   >
                     Last quarter
                   </button>
+                  <div className="relative date-range-picker-container">
+                    <button
+                      onClick={() => {
+                        if (activeDateRangePicker === 'quick') {
+                          setActiveDateRangePicker(null);
+                          return;
+                        }
+                        const end = new Date();
+                        const start = new Date();
+                        start.setMonth(start.getMonth() - 3);
+                        setGraphDateRange({ start, end });
+                        setActiveDateRangePicker('quick');
+                      }}
+                      className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap border border-gray-300 bg-white flex items-center gap-2"
+                    >
+                      <span>Custom range</span>
+                      <span className="text-xs text-gray-500">
+                        {formatDateRange(graphDateRange.start, graphDateRange.end)}
+                      </span>
+                      <MdKeyboardArrowDown className={`w-4 h-4 text-gray-500 transition-transform ${activeDateRangePicker === 'quick' ? 'transform rotate-180' : ''}`} />
+                    </button>
+
+                    {activeDateRangePicker === 'quick' && (
+                      <div className="absolute z-10 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Start Date
+                            </label>
+                            <input
+                              type="date"
+                              value={tempStartDate}
+                              onChange={(e) => setTempStartDate(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              End Date
+                            </label>
+                            <input
+                              type="date"
+                              value={tempEndDate}
+                              onChange={(e) => setTempEndDate(e.target.value)}
+                              min={tempStartDate}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={handleDateRangeApply}
+                              className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                            >
+                              Apply
+                            </button>
+                            <button
+                              onClick={handleDateRangeCancel}
+                              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
