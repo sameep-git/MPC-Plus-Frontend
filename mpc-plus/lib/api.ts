@@ -20,6 +20,13 @@ export interface Update {
   priority?: 'low' | 'medium' | 'high';
 }
 
+export interface UserPermissions {
+  canViewResults: boolean;
+  canViewMachines: boolean;
+  canViewSettings: boolean;
+  canManageUsers: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -107,6 +114,93 @@ export const fetchUser = async (): Promise<User> => {
     role: 'admin',
     avatar: undefined // Will use initials fallback
   };
+};
+
+// User Management API functions
+export const fetchUsers = async (): Promise<User[]> => {
+  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.USER));
+  
+  // Mock data - replace with actual API call
+  return [
+    {
+      id: '1',
+      name: 'Stephen',
+      role: 'admin',
+      avatar: undefined
+    },
+    {
+      id: '2',
+      name: 'John Doe',
+      role: 'user',
+    },
+    {
+      id: '3',
+      name: 'Jane Smith',
+      role: 'user',
+    },
+    {
+      id: '4',
+      name: 'Bob Johnson',
+      role: 'user',
+    },
+  ];
+};
+
+export const updateUserRole = async (userId: string, role: 'admin' | 'user'): Promise<User> => {
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  // Mock API call - replace with actual API call
+  const users = await fetchUsers();
+  const user = users.find(u => u.id === userId);
+  
+  if (!user) {
+    throw new Error('User not found');
+  }
+  
+  const updatedUser: User = {
+    ...user,
+    role,
+  };
+  
+  return updatedUser;
+};
+
+// Global User Role Permissions Management
+const USER_ROLE_PERMISSIONS_STORAGE_KEY = 'userRolePermissions';
+
+export const getUserRolePermissions = async (): Promise<UserPermissions> => {
+  await new Promise(resolve => setTimeout(resolve, 200));
+  
+  // Check localStorage for saved permissions
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(USER_ROLE_PERMISSIONS_STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // If parsing fails, return defaults
+      }
+    }
+  }
+  
+  // Default permissions for User role
+  return {
+    canViewResults: true,
+    canViewMachines: true,
+    canViewSettings: false,
+    canManageUsers: false,
+  };
+};
+
+export const updateUserRolePermissions = async (permissions: UserPermissions): Promise<UserPermissions> => {
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  // Save to localStorage (in real app, this would be an API call)
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(USER_ROLE_PERMISSIONS_STORAGE_KEY, JSON.stringify(permissions));
+  }
+  
+  return permissions;
 };
 
 // Error handling wrapper

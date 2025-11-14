@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MdKeyboardArrowDown, MdPerson, MdSettings, MdNotifications, MdHelp, MdLogout } from 'react-icons/md';
+import { useRouter } from 'next/navigation';
+import { MdKeyboardArrowDown, MdPerson, MdSettings, MdPeople, MdHelp, MdLogout } from 'react-icons/md';
 import { type User } from '../../lib/api';
-import { UI_CONSTANTS, USER_MENU_ACTIONS } from '../../constants';
+import { UI_CONSTANTS, USER_MENU_ACTIONS, NAVIGATION } from '../../constants';
 
 interface UserMenuProps {
   user: User | null;
@@ -14,6 +15,7 @@ interface UserMenuProps {
 
 export default function UserMenu({ user, isOpen, onToggle, onClose }: UserMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -50,6 +52,11 @@ export default function UserMenu({ user, isOpen, onToggle, onClose }: UserMenuPr
   }, [isOpen, onClose]);
 
   const handleMenuAction = (action: string) => {
+    if (action === USER_MENU_ACTIONS.USER_MANAGEMENT) {
+      router.push(NAVIGATION.ROUTES.USERS);
+    } else if (action === USER_MENU_ACTIONS.SETTINGS) {
+      router.push(NAVIGATION.ROUTES.SETTINGS);
+    }
     console.log(`User action: ${action}`);
     onClose();
   };
@@ -132,11 +139,11 @@ export default function UserMenu({ user, isOpen, onToggle, onClose }: UserMenuPr
             </button>
 
             <button
-              onClick={() => handleMenuAction(USER_MENU_ACTIONS.NOTIFICATIONS)}
+              onClick={() => handleMenuAction(USER_MENU_ACTIONS.USER_MANAGEMENT)}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
             >
-              <MdNotifications className="w-4 h-4" />
-              <span>Notifications</span>
+              <MdPeople className="w-4 h-4" />
+              <span>User Management</span>
             </button>
 
             <div className="border-t border-gray-100 my-2"></div>

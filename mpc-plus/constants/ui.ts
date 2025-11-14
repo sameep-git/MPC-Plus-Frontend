@@ -74,6 +74,7 @@ export const NAVIGATION = {
     MPC_RESULT: '/results',
     RESULT_DETAIL: '/result-detail',
     SETTINGS: '/settings',
+    USERS: '/users',
   },
   LINKS: {
     DASHBOARD: '#',
@@ -132,7 +133,7 @@ export const GRAPH_CONSTANTS = {
 export const USER_MENU_ACTIONS = {
   PROFILE: 'profile',
   SETTINGS: 'settings',
-  NOTIFICATIONS: 'notifications',
+  USER_MANAGEMENT: 'user-management',
   HELP: 'help',
   LOGOUT: 'logout',
 } as const;
