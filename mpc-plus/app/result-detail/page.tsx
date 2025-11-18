@@ -14,7 +14,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose, MdClear } from 'react-icons/md';
-import { fetchUser, handleApiError, type User } from '../../lib/api';
+import { fetchUser, handleApiError } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
@@ -138,7 +138,7 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
 export default function ResultDetailPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -538,7 +538,8 @@ export default function ResultDetailPage() {
   }, [baselineSettings, baselineComputation.baselineDateInRange, selectedMetrics.size]);
 
   const getBaselineBannerClasses = () => {
-    switch (baselineSummary.tone) {
+    const tone = baselineSummary.tone as string;
+    switch (tone) {
       case 'warning':
         return 'bg-amber-50 border-amber-200 text-amber-700';
       case 'info':
@@ -872,7 +873,7 @@ export default function ResultDetailPage() {
               {baselineSummary && (
                 <div className={`mb-4 px-4 py-3 border rounded-lg text-sm ${getBaselineBannerClasses()}`}>
                   {baselineSummary.message}
-                  {baselineSummary.tone === 'warning' && (
+                  {(baselineSummary.tone as string) === 'warning' && (
                     <span className="ml-1">
                       Adjust ranges or update the baseline in Settings.
                     </span>

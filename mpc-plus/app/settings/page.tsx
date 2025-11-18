@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError, type User } from '../../lib/api';
+import { fetchUser, handleApiError } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { NAVIGATION } from '../../constants';
 import {
@@ -61,7 +61,7 @@ const SETTINGS_SECTIONS = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => getSettings());

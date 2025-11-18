@@ -2,11 +2,10 @@
 
 import { useEffect, useRef } from 'react';
 import { MdKeyboardArrowDown, MdPerson, MdSettings, MdNotifications, MdHelp, MdLogout } from 'react-icons/md';
-import { type User } from '../../lib/api';
 import { UI_CONSTANTS, USER_MENU_ACTIONS } from '../../constants';
 
 interface UserMenuProps {
-  user: User | null;
+  user: { id: string; name?: string; role?: string } | null;
   isOpen: boolean;
   onToggle: () => void;
   onClose: () => void;
@@ -66,7 +65,7 @@ export default function UserMenu({ user, isOpen, onToggle, onClose }: UserMenuPr
         {/* Avatar */}
         <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
           <span className="text-white text-sm font-medium">
-            {user ? user.name.charAt(0).toUpperCase() : 'U'}
+            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
           </span>
         </div>
         
@@ -96,7 +95,7 @@ export default function UserMenu({ user, isOpen, onToggle, onClose }: UserMenuPr
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
                 <span className="text-white font-medium">
-                  {user ? user.name.charAt(0).toUpperCase() : 'U'}
+                  {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </span>
               </div>
               <div className="flex-1 min-w-0">

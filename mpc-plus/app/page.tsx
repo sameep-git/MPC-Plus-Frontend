@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { fetchMachines, fetchUpdates, fetchUser, handleApiError, type Machine, type Update, type User } from '../lib/api';
+import { fetchMachines, fetchUpdates, fetchUser, handleApiError } from '../lib/api';
+import type { Machine as MachineType } from '../models/Machine';
+import type { UpdateModel as UpdateModelType } from '../models/Update';
 import { Navbar, Button, UpdateCard } from '../components/ui';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [updates, setUpdates] = useState<Update[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [machines, setMachines] = useState<MachineType[]>([]);
+  const [updates, setUpdates] = useState<UpdateModelType[]>([]);
+  const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -156,9 +158,9 @@ export default function Home() {
               updates.map((update) => (
                 <UpdateCard
                   key={update.id}
-                  title={update.title}
-                  description={update.description}
-                  iconType={update.type as keyof typeof UI_CONSTANTS.UPDATE_ICON_TYPE || 'INFO'}
+                  title={update.title ?? (update.info as string) ?? 'Update'}
+                  description={update.description ?? (update.info as string) ?? ''}
+                  iconType={(update.type as keyof typeof UI_CONSTANTS.UPDATE_ICON_TYPE) || 'INFO'}
                   onClick={() => {/* Handle click event */}}
                 />
               ))

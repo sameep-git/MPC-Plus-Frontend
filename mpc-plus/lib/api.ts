@@ -1,112 +1,112 @@
 // API service for MPC Plus application
-// This file contains all API-related functions and types
+// Replaces mock functions with real calls. Prefer REST backend via NEXT_PUBLIC_API_URL.
+// If Supabase env vars are present, Supabase will be used as a fallback option.
 
 import { API_CONSTANTS, UI_CONSTANTS } from '../constants';
+import supabase from './supabaseClient';
+import type { Machine as MachineType } from '../models/Machine';
+import type { UpdateModel as UpdateModelType } from '../models/Update';
+import type { Result as ResultType } from '../models/Result';
 
-export interface Machine {
-  id: string;
-  name: string;
-  status: 'active' | 'maintenance' | 'inactive';
-  lastUpdate?: string;
-  location?: string;
-}
+// Prefer explicit API URL. If not provided, fall back to NEXT_PUBLIC_SUPABASE_URL so
+// passing NEXT_PUBLIC_SUPABASE_URL allows calling Supabase-hosted REST endpoints.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
-export interface Update {
-  id: string;
-  title: string;
-  description: string;
-  date: string;
-  type: 'info' | 'signoff' | 'threshold';
-  priority?: 'low' | 'medium' | 'high';
-}
+const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
+  // Inject Supabase publishable apikey header if available (useful when calling
+  // Supabase REST endpoints directly via NEXT_PUBLIC_SUPABASE_URL).
+  const headers = new Headers(init?.headers as HeadersInit);
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (supabaseKey) {
+    headers.set('apikey', supabaseKey);
+  }
 
-export interface User {
-  id: string;
-  name: string;
-  role: 'admin' | 'user';
-  avatar?: string;
-}
-
-// Mock API functions - replace with actual API calls
-export const fetchMachines = async (): Promise<Machine[]> => {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.MACHINES));
-  
-  // Mock data - replace with actual API call
-  return [
-    { 
-      id: '1', 
-      name: 'Machine Name 1', 
-      status: 'active',
-      lastUpdate: '2024-10-14T10:30:00Z',
-      location: 'Floor 1'
-    },
-    { 
-      id: '2', 
-      name: 'Machine Name 2', 
-      status: 'active',
-      lastUpdate: '2024-10-14T09:15:00Z',
-      location: 'Floor 1'
-    },
-    { 
-      id: '3', 
-      name: 'Machine Name 3', 
-      status: 'maintenance',
-      lastUpdate: '2024-10-13T16:45:00Z',
-      location: 'Floor 2'
-    },
-    { 
-      id: '4', 
-      name: 'Machine Name 4', 
-      status: 'active',
-      lastUpdate: '2024-10-14T11:20:00Z',
-      location: 'Floor 2'
-    },
-  ];
+  const res = await fetch(input, { ...(init || {}), headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+  }
+  return res.json().catch(() => null);
 };
 
-export const fetchUpdates = async (): Promise<Update[]> => {
-  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.UPDATES));
-  
-  // Mock data - replace with actual API call
-  return [
-    {
-      id: '1',
-      title: 'New MPC Data for 10/14',
-      description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
-      date: '2024-10-14',
-      type: 'info',
-      priority: 'medium'
-    },
-    {
-      id: '2',
-      title: 'Sign-off missing for Machine 2',
-      description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
-      date: '2024-10-13',
-      type: 'signoff',
-      priority: 'low'
-    },
-    {
-      id: '3',
-      title: 'View checks close to threshold',
-      description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
-      date: '2024-10-12',
-      type: 'threshold',
-      priority: 'high'
+export const fetchMachines = async (): Promise<MachineType[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/machines`;
+      return await safeFetch(url);
     }
-  ];
+
+    if (supabase) {
+      const { data, error } = await supabase.from('machines').select('*');
+      if (error) throw error;
+      return data as MachineType[];
+    }
+
+    // Last fallback: return empty array but signal with console (keeps UI from crashing)
+    console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
+    return [];
+  } catch (err) {
+    throw err;
+  }
 };
 
-export const fetchUser = async (): Promise<User> => {
-  await new Promise(resolve => setTimeout(resolve, API_CONSTANTS.DELAYS.USER));
-  
-  // Mock data - replace with actual API call
-  return {
-    id: '1',
-    name: 'Stephen',
-    role: 'admin',
-    avatar: undefined // Will use initials fallback
-  };
+export const fetchUpdates = async (): Promise<UpdateModelType[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/updates`;
+      return await safeFetch(url);
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase.from('updates').select('*');
+      if (error) throw error;
+      return data as UpdateModelType[];
+    }
+
+    return [];
+  } catch (err) {
+    throw err;
+  }
+};
+
+export const fetchResults = async (month: number, year: number): Promise<ResultType[]> => {
+  try {
+    if (API_BASE) {
+      const url = new URL(`${API_BASE.replace(/\/$/, '')}/results`);
+      url.searchParams.set('month', String(month));
+      url.searchParams.set('year', String(year));
+      return await safeFetch(url.toString());
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('results')
+        .select('*')
+        .eq('month', month)
+        .eq('year', year);
+      if (error) throw error;
+      return data as ResultType[];
+    }
+
+    return [];
+  } catch (err) {
+    throw err;
+  }
+};
+
+export const fetchUser = async (): Promise<{ id: string; name: string; role: string } | null> => {
+  try {
+    // If you have an auth system, use it here. For now try Supabase user or return null.
+    if (supabase) {
+      const user = (await supabase.auth.getUser()).data?.user ?? null;
+      if (!user) return null;
+      return { id: user.id, name: (user.user_metadata as any)?.name ?? user.email ?? 'User', role: 'user' };
+    }
+
+    return null;
+  } catch (err) {
+    throw err;
+  }
 };
 
 // Error handling wrapper
@@ -114,5 +114,5 @@ export const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;
   }
-  return UI_CONSTANTS.ERRORS.UNEXPECTED_ERROR;
+  return UI_CONSTANTS.ERRORS?.UNEXPECTED_ERROR ?? 'Unexpected error';
 };

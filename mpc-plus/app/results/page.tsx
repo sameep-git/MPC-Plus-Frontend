@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { MdKeyboardArrowDown } from 'react-icons/md';
-import { fetchMachines, fetchUser, handleApiError, type Machine, type User } from '../../lib/api';
+import { fetchMachines, fetchUser, handleApiError } from '../../lib/api';
+import type { Machine as MachineType } from '../../models/Machine';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, API_CONSTANTS } from '../../constants';
 
@@ -51,9 +52,9 @@ const generateMockResults = (machineId: string, startDate: Date, endDate: Date):
 export default function MPCResultPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const [machines, setMachines] = useState<MachineType[]>([]);
+  const [user, setUser] = useState<{ id: string; name?: string } | null>(null);
+  const [selectedMachine, setSelectedMachine] = useState<MachineType | null>(null);
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
