@@ -10,11 +10,17 @@ import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
   const [machines, setMachines] = useState<MachineType[]>([]);
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [machinesError, setMachinesError] = useState<string | null>(null);
+
   const [updates, setUpdates] = useState<UpdateModelType[]>([]);
+  const [updatesLoading, setUpdatesLoading] = useState(true);
+  const [updatesError, setUpdatesError] = useState<string | null>(null);
+
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
+  const [userLoading, setUserLoading] = useState(true);
+  const [userError, setUserError] = useState<string | null>(null);
+
   const handleMachineSelect = (machineId: string, e: React.MouseEvent) => {
     e.preventDefault();
     // Store the selected machine ID in localStorage
@@ -38,27 +44,18 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setError(null);
-        const [machinesData, updatesData, userData] = await Promise.all([
-          fetchMachines(),
-          fetchUpdates(),
-          fetchUser()
-        ]);
-        setMachines(machinesData);
-        setUpdates(updatesData);
-        setUser(userData);
-      } catch (error) {
-        const errorMessage = handleApiError(error);
-        setError(errorMessage);
-        console.error('Error loading data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
+    fetchMachines()
+      .then((data) => setMachines(data))
+      .catch((err) => setMachinesError(handleApiError(err)))
+      .finally(() => setMachinesLoading(false));
+    fetchUpdates()
+      .then((data) => setUpdates(data))
+      .catch((err) => setUpdatesError(handleApiError(err)))
+      .finally(() => setUpdatesLoading(false));
+    fetchUser()
+      .then((data) => setUser(data))
+      .catch((err) => setUserError(handleApiError(err)))
+      .finally(() => setUserLoading(false));
   }, []);
 
   return (
@@ -83,10 +80,10 @@ export default function Home() {
           </Button>
         </section>
 
-        {/* Error Display */}
-        {error && (
+        {/* Error Display for Machines */}
+        {machinesError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
+            <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {machinesError}</p>
             <Button 
               onClick={() => window.location.reload()}
               variant="text"
@@ -101,7 +98,7 @@ export default function Home() {
         <section className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">{UI_CONSTANTS.TITLES.TODAYS_UPDATES}</h2>
           <div className="flex flex-wrap gap-4">
-            {loading ? (
+            {machinesLoading ? (
               // Loading skeleton
               Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="bg-gray-200 animate-pulse h-12 w-48 rounded-lg"></div>
@@ -113,18 +110,20 @@ export default function Home() {
                 const handleMachineClick = (e: React.MouseEvent) => {
                   handleMachineSelect(machine.id, e);
                 };
-                
                 return (
                   <Link
                     key={machine.id}
                     href={NAVIGATION.ROUTES.MPC_RESULT}
                     onClick={handleMachineClick}
                     className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
-                    title={`Status: ${machine.status}${machine.location ? ` | Location: ${machine.location}` : ''}`}
+                    title={`${machine.name}${machine.location ? ` | Location: ${machine.location}` : ''}${machine.type ? ` | Type: ${machine.type}` : ''}`}
                   >
-                    {machine.name}
-                    {machine.status === 'maintenance' && (
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                    <div className="font-bold">{machine.name}</div>
+                    {machine.location && (
+                      <div className="text-xs text-purple-200">{machine.location}</div>
+                    )}
+                    {machine.type && (
+                      <div className="text-xs text-purple-300">{machine.type}</div>
                     )}
                   </Link>
                 );
@@ -149,7 +148,12 @@ export default function Home() {
           </div>
 
           <div className="space-y-4">
-            {loading ? (
+            {updatesError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {updatesError}</p>
+              </div>
+            )}
+            {updatesLoading ? (
               // Loading skeleton for updates
               Array.from({ length: 3 }).map((_, index) => (
                 <div key={index} className="bg-gray-100 animate-pulse h-20 rounded-lg"></div>

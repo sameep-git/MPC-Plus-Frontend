@@ -33,7 +33,10 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/machines`;
-      return await safeFetch(url);
+      console.log('[fetchMachines] Fetching:', url);
+      const result = await safeFetch(url);
+      console.log('[fetchMachines] Response:', result);
+      return result;
     }
 
     if (supabase) {
@@ -46,6 +49,7 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
     console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
     return [];
   } catch (err) {
+    console.error('[fetchMachines] Error:', err);
     throw err;
   }
 };
