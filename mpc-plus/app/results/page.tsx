@@ -3,51 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { MdKeyboardArrowDown } from 'react-icons/md';
-import { fetchMachines, fetchUser, handleApiError } from '../../lib/api';
+import { fetchMachines, fetchUser, fetchResults, handleApiError } from '../../lib/api';
 import type { Machine as MachineType } from '../../models/Machine';
 import { Navbar, Button } from '../../components/ui';
-import { UI_CONSTANTS, CALENDAR_CONSTANTS, API_CONSTANTS } from '../../constants';
+import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
 
-// Mock MPC result data for demonstration
-interface MPCResult {
-  id: string;
+// API response types
+interface DayCheckStatus {
   date: string;
-  machineId: string;
-  checks: {
-    geometry: boolean;
-    beam: boolean;
-  };
-  status: 'passed' | 'failed' | 'warning';
+  beamCheckStatus: 'pass' | 'warning' | 'fail' | null;
+  geometryCheckStatus: 'pass' | 'warning' | 'fail' | null;
 }
 
-// Mock function to generate MPC results
-const generateMockResults = (machineId: string, startDate: Date, endDate: Date): MPCResult[] => {
-  const results: MPCResult[] = [];
-  const currentDate = new Date(startDate);
-  
-  while (currentDate <= endDate) {
-    // Randomly generate results for demonstration
-    const hasGeometry = Math.random() > API_CONSTANTS.PROBABILITIES.GEOMETRY_CHECK;
-    const hasBeam = Math.random() > API_CONSTANTS.PROBABILITIES.BEAM_CHECK;
-    
-    if (hasGeometry || hasBeam) {
-      results.push({
-        id: `${machineId}-${currentDate.toISOString().split('T')[0]}`,
-        date: currentDate.toISOString().split('T')[0],
-        machineId,
-        checks: {
-          geometry: hasGeometry,
-          beam: hasBeam,
-        },
-        status: Math.random() > API_CONSTANTS.PROBABILITIES.WARNING_STATUS ? 'passed' : 'warning',
-      });
-    }
-    
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-  
-  return results;
-};
+interface MonthlyResults {
+  month: number;
+  year: number;
+  machineId: string;
+  checks: DayCheckStatus[];
+}
 
 export default function MPCResultPage() {
   const searchParams = useSearchParams();
@@ -58,8 +31,9 @@ export default function MPCResultPage() {
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
-  const [mpcResults, setMpcResults] = useState<MPCResult[]>([]);
+  const [monthlyResults, setMonthlyResults] = useState<MonthlyResults | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resultsLoading, setResultsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,10 +76,23 @@ export default function MPCResultPage() {
 
   useEffect(() => {
     if (selectedMachine) {
-      const firstDay = new Date(selectedYear, selectedMonth, 1);
-      const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
-      const results = generateMockResults(selectedMachine.id, firstDay, lastDay);
-      setMpcResults(results);
+      const loadResults = async () => {
+        try {
+          setResultsLoading(true);
+          setError(null);
+          const data = await fetchResults(selectedMonth + 1, selectedYear, selectedMachine.id);
+          setMonthlyResults(data);
+        } catch (err) {
+          const errorMessage = handleApiError(err);
+          setError(errorMessage);
+          console.error('Error loading results:', err);
+          setMonthlyResults(null);
+        } finally {
+          setResultsLoading(false);
+        }
+      };
+
+      loadResults();
     }
   }, [selectedMachine, selectedMonth, selectedYear]);
 
@@ -114,7 +101,7 @@ export default function MPCResultPage() {
       machine: selectedMachine?.name,
       month: selectedMonth + 1,
       year: selectedYear,
-      results: mpcResults.length
+      resultsCount: monthlyResults?.checks.length ?? 0
     });
     // TODO: Implement actual report generation
   };
@@ -145,18 +132,34 @@ export default function MPCResultPage() {
   };
 
   const getResultsForDate = (dayObj: { day: number; month: number; year: number }) => {
-    if (!selectedMachine) return null;
+    if (!monthlyResults) return null;
     
     const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-    return mpcResults.find(result => result.date === dateStr);
+    return monthlyResults.checks.find((check: DayCheckStatus) => {
+      // Extract just the date portion (YYYY-MM-DD) from the API response which may include timestamps
+      const checkDate = check.date.split('T')[0];
+      return checkDate === dateStr;
+    });
   };
 
   const handleDateClick = (dayObj: { day: number; month: number; year: number }) => {
     const results = getResultsForDate(dayObj);
     if (results) {
-      // Navigate to detail page with the date as a query parameter
+      // Navigate to detail page with the date passed through router state (hidden from URL)
       const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-      router.push(`/result-detail?date=${dateStr}`);
+      // Store the date and a guard flag in sessionStorage for the detail page to retrieve
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('resultDetailFrom', '1');
+        sessionStorage.setItem('resultDetailDate', dateStr);
+        if (selectedMachine) {
+          sessionStorage.setItem('resultDetailMachineId', selectedMachine.id);
+        }
+        // Also store the day's status to pre-fill the UI
+        try {
+          sessionStorage.setItem('resultDetailDayStatus', JSON.stringify(results));
+        } catch {}
+      }
+      router.push(`/result-detail`);
     }
   };
 
@@ -340,7 +343,7 @@ export default function MPCResultPage() {
               
               const results = getResultsForDate(dayObj);
               const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
-              const hasResults = results && (results.checks.geometry || results.checks.beam);
+              const hasResults = results && (results.beamCheckStatus || results.geometryCheckStatus);
               
               return (
                 <div
@@ -358,13 +361,25 @@ export default function MPCResultPage() {
                   
                   {results && (
                     <div className="space-y-1">
-                      {results.checks.geometry && (
-                        <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                      {results.geometryCheckStatus && (
+                        <div className={`text-xs px-2 py-1 rounded ${
+                          results.geometryCheckStatus === 'pass' 
+                            ? 'bg-green-100 text-green-800'
+                            : results.geometryCheckStatus === 'warning'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
                           {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
                         </div>
                       )}
-                      {results.checks.beam && (
-                        <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                      {results.beamCheckStatus && (
+                        <div className={`text-xs px-2 py-1 rounded ${
+                          results.beamCheckStatus === 'pass' 
+                            ? 'bg-green-100 text-green-800'
+                            : results.beamCheckStatus === 'warning'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
                           {UI_CONSTANTS.CHECKS.BEAM_CHECK}
                         </div>
                       )}
@@ -377,7 +392,7 @@ export default function MPCResultPage() {
         </div>
 
         {/* Results Summary */}
-        {selectedMachine && (
+        {selectedMachine && monthlyResults && (
           <div className="mt-8 p-4 bg-gray-50 rounded-lg">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {UI_CONSTANTS.TITLES.RESULTS_SUMMARY} {selectedMachine.name}
@@ -385,18 +400,20 @@ export default function MPCResultPage() {
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
-                <span className="ml-2 font-medium">{mpcResults.length}</span>
+                <span className="ml-2 font-medium">
+                  {monthlyResults.checks.filter(c => c.beamCheckStatus || c.geometryCheckStatus).length}
+                </span>
               </div>
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.GEOMETRY_CHECKS}</span>
                 <span className="ml-2 font-medium">
-                  {mpcResults.filter(r => r.checks.geometry).length}
+                  {monthlyResults.checks.filter((c: DayCheckStatus) => c.geometryCheckStatus).length}
                 </span>
               </div>
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.BEAM_CHECKS}</span>
                 <span className="ml-2 font-medium">
-                  {mpcResults.filter(r => r.checks.beam).length}
+                  {monthlyResults.checks.filter((c: DayCheckStatus) => c.beamCheckStatus).length}
                 </span>
               </div>
             </div>

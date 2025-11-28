@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { 
   LineChart, 
   Line, 
@@ -14,7 +14,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose, MdClear } from 'react-icons/md';
-import { fetchUser, handleApiError } from '../../lib/api';
+import { fetchUser, handleApiError, fetchBeams } from '../../lib/api';
 import { Navbar, Button } from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
@@ -136,23 +136,29 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
 };
 
 export default function ResultDetailPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Get date from URL params or use current date
-  const dateParam = searchParams.get('date');
-  const selectedDate = dateParam ? new Date(dateParam) : new Date();
+  // Get date from sessionStorage (passed from results page) or use current date
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
-  // Remove date query parameter from URL after reading it
   useEffect(() => {
-    if (dateParam && typeof window !== 'undefined') {
-      // Replace the URL without the query parameter
-      router.replace('/result-detail', { scroll: false });
+    if (typeof window !== 'undefined') {
+      const fromFlag = sessionStorage.getItem('resultDetailFrom');
+      const storedDate = sessionStorage.getItem('resultDetailDate');
+      if (!fromFlag || !storedDate) {
+        // If page was not navigated from results with a valid date, block access
+        router.replace('/results');
+        return;
+      }
+
+  setSelectedDate(parseLocalDateString(storedDate));
+      // Mark as consumed but keep values to avoid React StrictMode double-effect redirects
+      sessionStorage.setItem('resultDetailFrom', 'consumed');
     }
-  }, [dateParam, router]);
+  }, [router]);
   
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
@@ -166,6 +172,14 @@ export default function ResultDetailPage() {
     start.setDate(start.getDate() - 14); // 14 days before
     return { start, end };
   });
+
+  // Keep graph range in sync with the selected date once it is loaded from session
+  useEffect(() => {
+    const end = new Date(selectedDate);
+    const start = new Date(selectedDate);
+    start.setDate(start.getDate() - 14);
+    setGraphDateRange({ start, end });
+  }, [selectedDate]);
   
   const [activeDateRangePicker, setActiveDateRangePicker] = useState<'header' | 'quick' | null>(null);
   const [tempStartDate, setTempStartDate] = useState<string>('');
@@ -182,44 +196,8 @@ export default function ResultDetailPage() {
     'Center Shift',
   ];
 
-  // Create check results with beam-specific metric names
-  const createCheckResults = (): CheckResult[] => {
-    const results: CheckResult[] = [
-      {
-        id: 'geometry',
-        name: 'Geometry Check',
-        status: 'PASS',
-        metrics: [],
-      },
-    ];
-
-    // Add beam checks with beam-specific metrics
-    const beamIds = ['beam-2.5x', 'beam-6x', 'beam-6xfff', 'beam-10x'];
-    beamIds.forEach((beamId) => {
-      const beamType = getBeamTypeFromCheckId(beamId);
-      const beamName = beamType ? `Beam Check (${beamType})` : `Beam Check`;
-      
-      const metrics: CheckMetric[] = baseMetricNames.map((baseName) => ({
-        name: createBeamSpecificMetricName(baseName, beamType),
-        value: '',
-        thresholds: '',
-        absoluteValue: '',
-        status: 'pass' as const,
-      }));
-
-      results.push({
-        id: beamId,
-        name: beamName,
-        status: 'PASS',
-        metrics,
-      });
-    });
-
-    return results;
-  };
-
-  // Mock check results
-  const [checkResults] = useState<CheckResult[]>(createCheckResults());
+    // API-backed check results
+    const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() => 
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -242,6 +220,107 @@ export default function ResultDetailPage() {
 
     loadData();
   }, []);
+
+  // Load daily checks from API when date/machine is available
+  useEffect(() => {
+    const loadDailyChecks = async () => {
+      try {
+        if (typeof window === 'undefined') return;
+        const machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId');
+        const dateStr = (() => {
+          const d = selectedDate;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })();
+        if (!machineId) return;
+
+        // Build initial results with geometry check + beam checks
+        const initial: CheckResult[] = [
+          { id: 'geometry', name: 'Geometry Check', status: 'PASS', metrics: [] },
+          { id: 'beam-2.5x', name: 'Beam Check (2.5x)', status: 'PASS', metrics: [] },
+          { id: 'beam-6x', name: 'Beam Check (6x)', status: 'PASS', metrics: [] },
+          { id: 'beam-6xfff', name: 'Beam Check (6xFFF)', status: 'PASS', metrics: [] },
+          { id: 'beam-10x', name: 'Beam Check (10x)', status: 'PASS', metrics: [] },
+        ];
+
+        // Map UI beam ids to API types
+        const typeMap: Record<string, string> = {
+          'beam-2.5x': '2.5x',
+          'beam-6x': '6x',
+          'beam-6xfff': '6xff',
+          'beam-10x': '10x',
+        };
+
+        const resultsCopy = [...initial];
+
+        // Helper: try multiple type variants and date params to improve compatibility
+        const getFirstBeam = async (type: string) => {
+          const variants = [type, type.toLowerCase(), type.toUpperCase()];
+          // Special handling for FFF variants
+          if (type.toLowerCase() === '6xff') variants.push('6xFFF', '6xfff');
+          for (const v of variants) {
+            try {
+              let beams = await fetchBeams({ machineId, type: v, date: dateStr });
+              if (Array.isArray(beams) && beams.length > 0) return beams[0];
+              // Fallback: try using start-date/end-date with the same day
+              beams = await fetchBeams({ machineId, type: v, startDate: dateStr, endDate: dateStr });
+              if (Array.isArray(beams) && beams.length > 0) return beams[0];
+            } catch (_) {
+              // continue to next variant
+            }
+          }
+          return null;
+        };
+
+        await Promise.all(
+          resultsCopy
+            .filter(r => r.id.startsWith('beam-'))
+            .map(async (r) => {
+              const apiType = typeMap[r.id] || r.id.replace('beam-', '');
+              const b = await getFirstBeam(apiType);
+              const metrics: CheckMetric[] = [];
+              const beamType = getBeamTypeFromCheckId(r.id);
+              baseMetricNames.forEach((baseName) => {
+                const name = createBeamSpecificMetricName(baseName, beamType);
+                let value: number | string = '';
+                if (baseName.includes('Output')) value = (b as any)?.relOutput ?? '';
+                else if (baseName.includes('Uniformity')) value = (b as any)?.relUniformity ?? '';
+                else if (baseName.includes('Center Shift')) value = (b as any)?.centerShift ?? '';
+                metrics.push({ name, value, thresholds: '', absoluteValue: '', status: 'pass' });
+              });
+              r.metrics = metrics;
+            })
+        );
+
+        // Apply statuses from monthly day status if provided
+        try {
+          const dayStatusRaw = sessionStorage.getItem('resultDetailDayStatus');
+          if (dayStatusRaw) {
+            const dayStatus = JSON.parse(dayStatusRaw);
+            const geom = dayStatus.geometryCheckStatus as string | null;
+            const beam = dayStatus.beamCheckStatus as string | null;
+            const mapStatus = (s: string | null): 'PASS' | 'FAIL' | 'WARNING' => {
+              if (s === 'pass') return 'PASS';
+              if (s === 'fail') return 'FAIL';
+              if (s === 'warning') return 'WARNING';
+              return 'PASS';
+            };
+            const geomRes = resultsCopy.find(r => r.id === 'geometry');
+            if (geomRes && geom) geomRes.status = mapStatus(geom);
+            resultsCopy.forEach(r => { if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam); });
+          }
+        } catch {}
+
+        setCheckResults(resultsCopy);
+      } catch (err) {
+        console.error('Error loading daily checks:', err);
+      }
+    };
+
+    loadDailyChecks();
+  }, [selectedDate]);
 
   useEffect(() => {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
@@ -314,8 +393,30 @@ export default function ResultDetailPage() {
     return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   };
 
+  // Parse a YYYY-MM-DD string as a local Date to avoid UTC offset shifting
+  const parseLocalDateString = (s: string): Date => {
+    const [y, m, d] = s.split('-').map((n) => Number(n));
+    if (!y || !m || !d) return new Date(s);
+    return new Date(y, m - 1, d);
+  };
+
   const formatDateRange = (start: Date, end: Date): string => {
     return `${start.getDate()} ${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getFullYear().toString().slice(-2)} - ${end.getDate()} ${end.toLocaleDateString('en-US', { month: 'short' })} ${end.getFullYear().toString().slice(-2)}`;
+  };
+
+  // Format metric values for display based on name
+  const formatMetricValue = (metricName: string, value: string | number): string => {
+    if (value === '' || value === null || value === undefined) return '-';
+    const num = Number(value);
+    if (Number.isNaN(num)) return String(value);
+    const lower = metricName.toLowerCase();
+    if (lower.includes('output change') || lower.includes('uniformity change')) {
+      return `${num.toFixed(2)}%`;
+    }
+    if (lower.includes('center shift')) {
+      return `${num.toFixed(3)}`;
+    }
+    return num.toFixed(3);
   };
 
   const handleDateRangeApply = () => {
@@ -659,7 +760,7 @@ export default function ResultDetailPage() {
                 <span className="truncate">
                   {formatDateRange(graphDateRange.start, graphDateRange.end)}
                 </span>
-                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 flex-shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
+                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
               </button>
               
               {activeDateRangePicker === 'header' && (
@@ -747,28 +848,35 @@ export default function ResultDetailPage() {
                   
                   {/* Check Details Table */}
                   {isExpanded && check.metrics.length > 0 && (
-                    <div className="border-t border-gray-200 p-4">
-                      <table className="w-full">
+                    <div className="border-t border-gray-200 p-4 overflow-x-auto">
+                      <table className="w-full table-fixed min-w-[640px]">
+                        <colgroup>
+                          <col className="w-[52%]" />
+                          <col className="w-[16%] min-w-[120px]" />
+                          <col className="w-[16%] min-w-[140px]" />
+                          <col className="w-[16%] min-w-[140px]" />
+                        </colgroup>
                         <thead>
                           <tr className="border-b border-gray-200">
-                            <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Value</th>
-                            <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Thresholds</th>
-                            <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Absolute Value</th>
+                            <th className="text-left py-2 pr-6 pl-3 text-xs font-semibold tracking-wide text-gray-500">Metric</th>
+                            <th className="text-right py-2 pr-4 pl-3 text-xs font-semibold tracking-wide text-gray-500">Value</th>
+                            <th className="text-left py-2 px-4 text-xs font-semibold tracking-wide text-gray-500">Thresholds</th>
+                            <th className="text-left py-2 pl-3 pr-6 text-xs font-semibold tracking-wide text-gray-500">Absolute Value</th>
                           </tr>
                         </thead>
                         <tbody>
                           {check.metrics.map((metric, index) => (
-                            <tr key={index} className="border-b border-gray-100">
-                              <td className="py-2 px-3">
-                                <div className="flex items-center space-x-2">
+                            <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-2 pr-6 pl-3 align-top">
+                                <div className="flex items-center gap-2">
                                   {metric.status === 'pass' && (
-                                    <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
                                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                       </svg>
                                     </div>
                                   )}
-                                  <span className="text-sm text-gray-900">{metric.name}</span>
+                                  <span className="text-xs font-medium text-gray-900 leading-tight">{metric.name}</span>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -783,17 +891,28 @@ export default function ResultDetailPage() {
                                       });
                                       setShowGraph(true);
                                     }}
-                                    className={`p-1 rounded hover:bg-gray-100 transition-colors ${
-                                      selectedMetrics.has(metric.name) ? 'text-purple-600 bg-purple-50' : 'text-gray-400'
+                                    className={`p-1 rounded transition-colors ${
+                                      selectedMetrics.has(metric.name) ? 'text-purple-600 bg-purple-50 hover:bg-purple-100' : 'text-gray-400 hover:bg-gray-100'
                                     }`}
                                     title={`${selectedMetrics.has(metric.name) ? 'Remove' : 'Add'} graph for ${metric.name}`}
                                   >
-                                    <MdShowChart className="w-4 h-4" />
+                                    <MdShowChart className="w-3 h-3" />
                                   </button>
                                 </div>
                               </td>
-                              <td className="py-2 px-3 text-sm text-gray-600">{metric.thresholds || '-'}</td>
-                              <td className="py-2 px-3 text-sm text-gray-600">{metric.absoluteValue || '-'}</td>
+                              <td className="py-2 pr-4 pl-3 text-right text-xs font-semibold text-gray-900 tabular-nums whitespace-nowrap">
+                                {formatMetricValue(metric.name, metric.value)}
+                              </td>
+                              <td className="py-2 px-4 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis" title={metric.thresholds || undefined}>
+                                {metric.thresholds || '-'}
+                              </td>
+                              <td className="py-2 pl-3 pr-6 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis" title={
+                                metric.absoluteValue !== undefined && metric.absoluteValue !== ''
+                                  ? String(metric.absoluteValue)
+                                  : undefined
+                              }>
+                                {metric.absoluteValue || '-'}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

@@ -7,6 +7,7 @@ import supabase from './supabaseClient';
 import type { Machine as MachineType } from '../models/Machine';
 import type { UpdateModel as UpdateModelType } from '../models/Update';
 import type { Result as ResultType } from '../models/Result';
+import type { Beam as BeamType } from '../models/Beam';
 
 // Prefer explicit API URL. If not provided, fall back to NEXT_PUBLIC_SUPABASE_URL so
 // passing NEXT_PUBLIC_SUPABASE_URL allows calling Supabase-hosted REST endpoints.
@@ -73,13 +74,17 @@ export const fetchUpdates = async (): Promise<UpdateModelType[]> => {
   }
 };
 
-export const fetchResults = async (month: number, year: number): Promise<ResultType[]> => {
+export const fetchResults = async (month: number, year: number, machineId: string) => {
   try {
     if (API_BASE) {
       const url = new URL(`${API_BASE.replace(/\/$/, '')}/results`);
       url.searchParams.set('month', String(month));
       url.searchParams.set('year', String(year));
-      return await safeFetch(url.toString());
+      url.searchParams.set('machineId', machineId);
+      console.log('[fetchResults] Fetching:', url.toString());
+      const result = await safeFetch(url.toString());
+      console.log('[fetchResults] Response:', result);
+      return result;
     }
 
     if (supabase) {
@@ -87,13 +92,15 @@ export const fetchResults = async (month: number, year: number): Promise<ResultT
         .from('results')
         .select('*')
         .eq('month', month)
-        .eq('year', year);
+        .eq('year', year)
+        .eq('machineId', machineId);
       if (error) throw error;
-      return data as ResultType[];
+      return data;
     }
 
-    return [];
+    return null;
   } catch (err) {
+    console.error('[fetchResults] Error:', err);
     throw err;
   }
 };
@@ -108,6 +115,65 @@ export const fetchUser = async (): Promise<{ id: string; name: string; role: str
     }
 
     return null;
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Beams API
+export const fetchBeamTypes = async (): Promise<string[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/types`;
+      return await safeFetch(url);
+    }
+
+    if (supabase) {
+      // If using Supabase, assume a table 'beams' with 'type' column
+      const { data, error } = await supabase.from('beams').select('type');
+      if (error) throw error;
+      return Array.from(new Set((data as any[]).map((r) => r.type))).filter(Boolean) as string[];
+    }
+
+    return [];
+  } catch (err) {
+    throw err;
+  }
+};
+
+type FetchBeamsParams = {
+  machineId: string;
+  type: string;
+  date?: string; // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  range?: 'week' | 'month' | 'quarter';
+};
+
+export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> => {
+  try {
+    if (API_BASE) {
+      const url = new URL(`${API_BASE.replace(/\/$/, '')}/beams`);
+      url.searchParams.set('type', params.type);
+      url.searchParams.set('machine-id', params.machineId);
+      if (params.date) url.searchParams.set('date', params.date);
+      if (params.startDate) url.searchParams.set('start-date', params.startDate);
+      if (params.endDate) url.searchParams.set('end-date', params.endDate);
+      if (params.range) url.searchParams.set('range', params.range);
+      return await safeFetch(url.toString());
+    }
+
+    if (supabase) {
+      let query = supabase.from('beams').select('*').eq('type', params.type).eq('machineId', params.machineId);
+      if (params.date) query = query.eq('date', params.date);
+      if (params.startDate) query = query.gte('date', params.startDate);
+      if (params.endDate) query = query.lte('date', params.endDate);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as BeamType[];
+    }
+
+    return [] as BeamType[];
   } catch (err) {
     throw err;
   }
