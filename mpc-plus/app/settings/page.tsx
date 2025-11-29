@@ -89,13 +89,19 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handlePopState = () => {
-      // When user clicks back from settings, navigate to results page
-      router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+    const handlePopState = (event: PopStateEvent) => {
+      // Only navigate to calendar if we're not just changing the hash
+      // If the state has fromSettings, it means we're going back from settings
+      if (event.state?.fromSettings && !window.location.hash) {
+        router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+      }
     };
 
     // Add a history entry so we can intercept the back button
-    window.history.pushState({ fromSettings: true }, '', window.location.href);
+    // Only if we don't already have a hash in the URL
+    if (!window.location.hash) {
+      window.history.pushState({ fromSettings: true }, '', window.location.href);
+    }
     
     window.addEventListener('popstate', handlePopState);
 
@@ -220,13 +226,19 @@ export default function SettingsPage() {
           className="mb-8 flex flex-wrap gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm"
         >
           {SETTINGS_SECTIONS.map((section) => (
-            <a
+            <button
               key={section.id}
-              href={`#${section.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                const element = document.getElementById(section.id);
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 transition-colors"
             >
               {section.label}
-            </a>
+            </button>
           ))}
         </nav>
 
