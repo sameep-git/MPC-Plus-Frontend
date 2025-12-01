@@ -69,6 +69,9 @@ export default function Home() {
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             {UI_CONSTANTS.TITLES.WELCOME}, {user?.name || UI_CONSTANTS.STATUS.USER}!
           </h1>
+          <p className="text-gray-600 mb-6 max-w-2xl">
+            Monitor and manage your machine performance checks. View results, track updates, and access detailed analytics for your equipment.
+          </p>
           <Button 
             size="lg" 
             onClick={handleViewAllResults}
@@ -165,6 +168,13 @@ export default function Home() {
             )}
           </div>
         </section>
+
+        {/* Additional Information */}
+        <div className="mt-8 p-6 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-gray-600 text-sm">
+            Stay informed about important changes, threshold alerts, and system updates. Click on any update card above to view more details.
+          </p>
+        </div>
       </main>
     </div>
   );
