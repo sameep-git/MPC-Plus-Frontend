@@ -159,8 +159,8 @@ export default function Home() {
               updates.map((update) => (
                 <UpdateCard
                   key={update.id}
-                  title={update.title ?? (update.info as string) ?? 'Update'}
-                  description={update.description ?? (update.info as string) ?? ''}
+                  machineId={update.machineId}
+                  description={update.info ?? ''}
                   iconType={(update.type as keyof typeof UI_CONSTANTS.UPDATE_ICON_TYPE) || 'INFO'}
                   onClick={() => {/* Handle click event */}}
                 />
