@@ -270,7 +270,7 @@ export default function MPCResultPage() {
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
                   className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  {Array.from({ length: 11 }).map((_, i) => {
+                  {Array.from({ length: 6 }).map((_, i) => {
                     const y = today.getFullYear() - 5 + i;
                     return (
                       <option key={y} value={y}>{y}</option>

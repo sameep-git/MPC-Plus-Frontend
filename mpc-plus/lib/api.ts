@@ -106,18 +106,12 @@ export const fetchResults = async (month: number, year: number, machineId: strin
 };
 
 export const fetchUser = async (): Promise<{ id: string; name: string; role: string } | null> => {
-  try {
-    // If you have an auth system, use it here. For now try Supabase user or return null.
-    if (supabase) {
-      const user = (await supabase.auth.getUser()).data?.user ?? null;
-      if (!user) return null;
-      return { id: user.id, name: (user.user_metadata as any)?.name ?? user.email ?? 'User', role: 'user' };
-    }
-
-    return null;
-  } catch (err) {
-    throw err;
-  }
+  // Pending real auth integration, return a mocked admin user for the UI
+  return {
+    id: 'mock-user-stephen',
+    name: 'Stephen',
+    role: 'Admin',
+  };
 };
 
 // Beams API

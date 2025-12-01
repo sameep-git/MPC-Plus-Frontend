@@ -751,7 +751,7 @@ export default function ResultDetailPage() {
             <Button onClick={handleGenerateReport} size="lg">
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
             </Button>
-            {/* Date Range Picker Dropdown */}
+            {/* Date Range Picker Dropdown
             <div className="relative date-range-picker-container">
               <button
                 onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
@@ -806,7 +806,7 @@ export default function ResultDetailPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </div> */}
           </div>
         </div>
 
