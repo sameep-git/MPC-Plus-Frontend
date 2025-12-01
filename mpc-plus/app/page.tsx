@@ -69,9 +69,6 @@ export default function Home() {
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             {UI_CONSTANTS.TITLES.WELCOME}, {user?.name || UI_CONSTANTS.STATUS.USER}!
           </h1>
-          <p className="text-gray-600 mb-6 max-w-2xl">
-            {UI_CONSTANTS.PLACEHOLDERS.WELCOME_DESCRIPTION}
-          </p>
           <Button 
             size="lg" 
             onClick={handleViewAllResults}
@@ -139,9 +136,6 @@ export default function Home() {
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 mb-4">{UI_CONSTANTS.TITLES.LATEST_UPDATES}</h2>
-            <p className="text-gray-600 mb-6">
-              {UI_CONSTANTS.PLACEHOLDERS.UPDATES_DESCRIPTION}
-            </p>
             <Button size="lg">
               {UI_CONSTANTS.BUTTONS.VIEW_ALL_UPDATES}
             </Button>

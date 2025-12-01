@@ -28,9 +28,7 @@ export const UI_CONSTANTS = {
   
   // Placeholder text
   PLACEHOLDERS: {
-    WELCOME_DESCRIPTION: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla tortor.',
-    MPC_RESULTS_DESCRIPTION: 'Subheading that sets up context, shares more info about the author, or generally gets people psyched to keep reading.',
-    UPDATES_DESCRIPTION: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean nunc elit, iaculis in turpis at, porta fringilla quam.',
+    MPC_RESULTS_DESCRIPTION: 'Select a machine and month to view MPC check results and status.',
   },
   
   // Error messages
