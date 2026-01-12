@@ -2,20 +2,31 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   ReferenceArea,
   ReferenceLine
 } from 'recharts';
-import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdTrendingUp, MdDescription, MdShowChart, MdClose, MdClear } from 'react-icons/md';
+import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdShowChart, MdClose, MdClear } from 'react-icons/md';
 import { fetchUser, handleApiError, fetchBeams } from '../../lib/api';
-import { Navbar, Button } from '../../components/ui';
+import {
+  Navbar,
+  Button,
+  DatePicker,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
 
@@ -102,19 +113,19 @@ interface GraphDataPoint {
 const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<string>): GraphDataPoint[] => {
   const data: GraphDataPoint[] = [];
   const currentDate = new Date(startDate);
-  
+
   while (currentDate <= endDate) {
     const isoDate = currentDate.toISOString().split('T')[0];
     const dataPoint: GraphDataPoint = {
       date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       fullDate: isoDate,
     };
-    
+
     // Generate data for each selected metric
     selectedMetrics.forEach((metricName) => {
       // Create a sanitized key for the metric (remove special characters)
       const key = getMetricKey(metricName);
-      
+
       // Generate value based on metric type
       let value = Math.random() * 12 - 6;
       if (metricName.includes('Output Change')) {
@@ -124,14 +135,14 @@ const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<
       } else if (metricName.includes('Center Shift')) {
         value = Math.random() * 6 - 3; // -3 to 3 range
       }
-      
+
       dataPoint[key] = value;
     });
-    
+
     data.push(dataPoint);
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
+
   return data;
 };
 
@@ -140,10 +151,10 @@ export default function ResultDetailPage() {
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Get date from sessionStorage (passed from results page) or use current date
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const fromFlag = sessionStorage.getItem('resultDetailFrom');
@@ -154,17 +165,16 @@ export default function ResultDetailPage() {
         return;
       }
 
-  setSelectedDate(parseLocalDateString(storedDate));
+      setSelectedDate(parseLocalDateString(storedDate));
       // Mark as consumed but keep values to avoid React StrictMode double-effect redirects
       sessionStorage.setItem('resultDetailFrom', 'consumed');
     }
   }, [router]);
-  
+
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['beam-2.5x']));
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
   const [showGraph, setShowGraph] = useState<boolean>(false);
-  const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
-  
+
   // Date range for graph
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
     const end = new Date(selectedDate);
@@ -180,8 +190,8 @@ export default function ResultDetailPage() {
     start.setDate(start.getDate() - 14);
     setGraphDateRange({ start, end });
   }, [selectedDate]);
-  
-  const [activeDateRangePicker, setActiveDateRangePicker] = useState<'header' | 'quick' | null>(null);
+
+
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
@@ -196,10 +206,10 @@ export default function ResultDetailPage() {
     'Center Shift',
   ];
 
-    // API-backed check results
-    const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
+  // API-backed check results
+  const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
 
-  const [graphData, setGraphData] = useState<GraphDataPoint[]>(() => 
+  const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
   );
 
@@ -311,7 +321,7 @@ export default function ResultDetailPage() {
             if (geomRes && geom) geomRes.status = mapStatus(geom);
             resultsCopy.forEach(r => { if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam); });
           }
-        } catch {}
+        } catch { }
 
         setCheckResults(resultsCopy);
       } catch (err) {
@@ -343,39 +353,19 @@ export default function ResultDetailPage() {
     };
   }, []);
 
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (dropdownOpen && !target.closest('.metric-dropdown-container')) {
-        setDropdownOpen(false);
-      }
-      if (activeDateRangePicker && !target.closest('.date-range-picker-container')) {
-        setActiveDateRangePicker(null);
-      }
-    };
-
-    if (dropdownOpen || activeDateRangePicker) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [dropdownOpen, activeDateRangePicker]);
-
   // Initialize temp dates when picker opens
   useEffect(() => {
-    if (activeDateRangePicker) {
-      const formatDateForInput = (date: Date): string => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-      setTempStartDate(formatDateForInput(graphDateRange.start));
-      setTempEndDate(formatDateForInput(graphDateRange.end));
-    }
-  }, [activeDateRangePicker, graphDateRange]);
+    // This useEffect now only runs when graphDateRange changes,
+    // assuming the picker state is managed externally or removed.
+    const formatDateForInput = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    setTempStartDate(formatDateForInput(graphDateRange.start));
+    setTempEndDate(formatDateForInput(graphDateRange.end));
+  }, [graphDateRange]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -423,15 +413,15 @@ export default function ResultDetailPage() {
     if (tempStartDate && tempEndDate) {
       const start = new Date(tempStartDate);
       const end = new Date(tempEndDate);
-      
+
       // Ensure start is before end
-      if (start > end) {
-        // Swap if start is after end
-        setGraphDateRange({ start: end, end: start });
-      } else {
+      if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        if (start > end) {
+          alert('Start date must be before end date');
+          return;
+        }
         setGraphDateRange({ start, end });
       }
-      setActiveDateRangePicker(null);
     }
   };
 
@@ -445,14 +435,15 @@ export default function ResultDetailPage() {
     };
     setTempStartDate(formatDateForInput(graphDateRange.start));
     setTempEndDate(formatDateForInput(graphDateRange.end));
-    setActiveDateRangePicker(null);
+    setTempStartDate(formatDateForInput(graphDateRange.start));
+    setTempEndDate(formatDateForInput(graphDateRange.end));
   };
 
   const handleQuickDateRange = (range: string) => {
     const today = new Date();
     let start: Date;
     let end = new Date(today);
-    
+
     switch (range) {
       case 'today':
         start = new Date(today);
@@ -478,9 +469,8 @@ export default function ResultDetailPage() {
       default:
         return;
     }
-    
+
     setGraphDateRange({ start, end });
-    setActiveDateRangePicker(null);
   };
 
   const handleGenerateReport = () => {
@@ -737,7 +727,7 @@ export default function ResultDetailPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar user={user} />
-      
+
       <main className="p-6 max-w-7xl mx-auto">
         {/* Page Title and Subtitle */}
         <div className="mb-6">
@@ -823,15 +813,16 @@ export default function ResultDetailPage() {
           <div className="space-y-4">
             {checkResults.map((check) => {
               const isExpanded = expandedChecks.has(check.id);
-              const statusColor = check.status === 'PASS' ? 'text-green-600' : 
-                                  check.status === 'FAIL' ? 'text-red-600' : 'text-yellow-600';
-              
+              const statusColor = check.status === 'PASS' ? 'text-green-600' :
+                check.status === 'FAIL' ? 'text-red-600' : 'text-yellow-600';
+
               return (
                 <div key={check.id} className="border border-gray-200 rounded-lg">
                   {/* Check Header */}
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={() => toggleCheck(check.id)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center justify-between p-4 h-auto hover:bg-gray-50 hover:no-underline"
                   >
                     <div className="flex items-center space-x-3">
                       <span className="font-medium text-gray-900">{check.name}</span>
@@ -844,8 +835,8 @@ export default function ResultDetailPage() {
                         <MdExpandMore className="w-6 h-6 text-gray-600" />
                       )}
                     </div>
-                  </button>
-                  
+                  </Button>
+
                   {/* Check Details Table */}
                   {isExpanded && check.metrics.length > 0 && (
                     <div className="border-t border-gray-200 p-4 overflow-x-auto">
@@ -877,7 +868,9 @@ export default function ResultDetailPage() {
                                     </div>
                                   )}
                                   <span className="text-xs font-medium text-gray-900 leading-tight">{metric.name}</span>
-                                  <button
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedMetrics(prev => {
@@ -891,13 +884,12 @@ export default function ResultDetailPage() {
                                       });
                                       setShowGraph(true);
                                     }}
-                                    className={`p-1 rounded transition-colors ${
-                                      selectedMetrics.has(metric.name) ? 'text-purple-600 bg-purple-50 hover:bg-purple-100' : 'text-gray-400 hover:bg-gray-100'
-                                    }`}
+                                    className={`h-6 w-6 p-0 rounded transition-colors ${selectedMetrics.has(metric.name) ? 'bg-purple-100 text-purple-600 hover:bg-purple-200' : 'text-gray-400 hover:bg-gray-100'
+                                      }`}
                                     title={`${selectedMetrics.has(metric.name) ? 'Remove' : 'Add'} graph for ${metric.name}`}
                                   >
                                     <MdShowChart className="w-3 h-3" />
-                                  </button>
+                                  </Button>
                                 </div>
                               </td>
                               <td className="py-2 pr-4 pl-3 text-right text-xs font-semibold text-gray-900 tabular-nums whitespace-nowrap">
@@ -926,260 +918,270 @@ export default function ResultDetailPage() {
 
           {/* Right Column - Graph and Date Selection */}
           {showGraph && (
-          <div className="space-y-6">
-            {/* Graph Area */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              {/* Graph Header */}
-              <div className="mb-4 flex items-center justify-between">
-                <div className="relative metric-dropdown-container">
-                  <button
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
-                    className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm w-64 text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <span className="truncate">
-                      {selectedMetrics.size === 0 
-                        ? 'Select metrics...' 
-                        : `${selectedMetrics.size} metric${selectedMetrics.size > 1 ? 's' : ''} selected`}
-                    </span>
-                    <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ${dropdownOpen ? 'transform rotate-180' : ''}`} />
-                  </button>
-                  
-                  {dropdownOpen && (
-                    <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {availableMetrics.length > 0 ? (
-                        <div className="py-2">
-                          {availableMetrics.map((metric) => (
-                            <label
+            <div className="space-y-6">
+              {/* Graph Area */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                {/* Graph Header */}
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="relative metric-dropdown-container">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-64 flex items-center justify-between"
+                        >
+                          <span className="truncate">
+                            {selectedMetrics.size === 0
+                              ? 'Select metrics...'
+                              : `${selectedMetrics.size} metric${selectedMetrics.size > 1 ? 's' : ''} selected`}
+                          </span>
+                          <MdKeyboardArrowDown className="w-4 h-4 text-gray-600 transition-transform group-data-[state=open]:rotate-180" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-64 max-h-60 overflow-y-auto" align="start">
+                        {availableMetrics.length > 0 ? (
+                          availableMetrics.map((metric) => (
+                            <DropdownMenuCheckboxItem
                               key={metric}
-                              className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer"
+                              checked={selectedMetrics.has(metric)}
+                              onCheckedChange={() => toggleMetric(metric)}
+                              onSelect={(e) => e.preventDefault()} // Keep open on selection
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedMetrics.has(metric)}
-                                onChange={() => toggleMetric(metric)}
-                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                              />
-                              <span className="ml-3 text-sm text-gray-900">{metric}</span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="px-4 py-2 text-sm text-gray-500">No metrics available</div>
-                      )}
-                    </div>
-                  )}
+                              {metric}
+                            </DropdownMenuCheckboxItem>
+                          ))
+                        ) : (
+                          <div className="px-2 py-2 text-sm text-gray-500">No metrics available</div>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleClearSelections}
+                      variant="ghost"
+                      className="text-gray-600 hover:text-gray-900 gap-2"
+                      title="Clear all selections"
+                      disabled={selectedMetrics.size === 0}
+                    >
+                      <MdClear className="w-4 h-4" />
+                      Clear
+                    </Button>
+                    <Button
+                      onClick={() => setShowGraph(false)}
+                      variant="ghost"
+                      size="icon"
+                      title="Close graph"
+                    >
+                      <MdClose className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleClearSelections}
-                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors flex items-center gap-2"
-                    title="Clear all selections"
-                    disabled={selectedMetrics.size === 0}
-                  >
-                    <MdClear className="w-4 h-4" />
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => setShowGraph(false)}
-                    className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-900"
-                    title="Close graph"
-                  >
-                    <MdClose className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
 
-              {baselineSummary && (
-                <div className={`mb-4 px-4 py-3 border rounded-lg text-sm ${getBaselineBannerClasses()}`}>
-                  {baselineSummary.message}
-                  {(baselineSummary.tone as string) === 'warning' && (
-                    <span className="ml-1">
-                      Adjust ranges or update the baseline in Settings.
-                    </span>
-                  )}
-                </div>
-              )}
-              
-              {/* Graph */}
-              <div className="h-96 mb-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="#6b7280"
-                      style={{ fontSize: '12px' }}
-                    />
-                    <YAxis 
-                      domain={yAxisDomain}
-                      stroke="#6b7280"
-                      style={{ fontSize: '12px' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'white', 
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px'
-                      }}
-                    />
-                    <>
-                      {/* Top threshold shading */}
-                      <ReferenceArea
-                        y1={topThreshold}
-                        y2={thresholdMax}
-                        fill={graphThresholdSettings.color}
-                        fillOpacity={0.3}
+                {baselineSummary && (
+                  <div className={`mb-4 px-4 py-3 border rounded-lg text-sm ${getBaselineBannerClasses()}`}>
+                    {baselineSummary.message}
+                    {(baselineSummary.tone as string) === 'warning' && (
+                      <span className="ml-1">
+                        Adjust ranges or update the baseline in Settings.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Graph */}
+                <div className="h-96 mb-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="date"
+                        stroke="#6b7280"
+                        style={{ fontSize: '12px' }}
                       />
-                      {/* Bottom threshold shading */}
-                      <ReferenceArea
-                        y1={thresholdMin}
-                        y2={bottomThreshold}
-                        fill={graphThresholdSettings.color}
-                        fillOpacity={0.3}
+                      <YAxis
+                        domain={yAxisDomain}
+                        stroke="#6b7280"
+                        style={{ fontSize: '12px' }}
                       />
-                    </>
-                    {baselineComputation.hasNumericBaseline && (
-                      <ReferenceLine
-                        y={0}
-                        stroke="#1f2937"
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
-                        label={{
-                          value: 'Baseline',
-                          position: 'right',
-                          fill: '#1f2937',
-                          fontSize: 12,
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px'
                         }}
                       />
-                    )}
-                    {Array.from(selectedMetrics).map((metricName, index) => {
-                      const dataKey = getMetricKey(metricName);
-                      const color = getMetricColor(index);
-                      return (
-                        <Line 
-                          key={metricName}
-                          type="monotone" 
-                          dataKey={dataKey}
-                          stroke={color}
-                          strokeWidth={3}
-                          dot={{ r: 5 }}
-                          name={metricName}
-                          activeDot={{ r: 7 }}
+                      <>
+                        {/* Top threshold shading */}
+                        <ReferenceArea
+                          y1={topThreshold}
+                          y2={thresholdMax}
+                          fill={graphThresholdSettings.color}
+                          fillOpacity={0.3}
                         />
-                      );
-                    })}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              
-              {/* Quick Date Options */}
-              <div className="mb-4 border border-gray-200 rounded-lg p-4">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => handleQuickDateRange('today')}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('yesterday')}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
-                  >
-                    Yesterday
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastWeek')}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
-                  >
-                    Last week
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastMonth')}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
-                  >
-                    Last month
-                  </button>
-                  <button
-                    onClick={() => handleQuickDateRange('lastQuarter')}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
-                  >
-                    Last quarter
-                  </button>
-                  <div className="relative date-range-picker-container">
-                    <button
-                      onClick={() => {
-                        if (activeDateRangePicker === 'quick') {
-                          setActiveDateRangePicker(null);
-                          return;
-                        }
-                        const end = new Date();
-                        const start = new Date();
-                        start.setMonth(start.getMonth() - 3);
-                        setGraphDateRange({ start, end });
-                        setActiveDateRangePicker('quick');
-                      }}
-                      className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors whitespace-nowrap border border-gray-300 bg-white flex items-center gap-2"
-                    >
-                      <span>Custom range</span>
-                      <span className="text-xs text-gray-500">
-                        {formatDateRange(graphDateRange.start, graphDateRange.end)}
-                      </span>
-                      <MdKeyboardArrowDown className={`w-4 h-4 text-gray-500 transition-transform ${activeDateRangePicker === 'quick' ? 'transform rotate-180' : ''}`} />
-                    </button>
+                        {/* Bottom threshold shading */}
+                        <ReferenceArea
+                          y1={thresholdMin}
+                          y2={bottomThreshold}
+                          fill={graphThresholdSettings.color}
+                          fillOpacity={0.3}
+                        />
+                      </>
+                      {baselineComputation.hasNumericBaseline && (
+                        <ReferenceLine
+                          y={0}
+                          stroke="#1f2937"
+                          strokeWidth={2}
+                          strokeDasharray="4 4"
+                          label={{
+                            value: 'Baseline',
+                            position: 'right',
+                            fill: '#1f2937',
+                            fontSize: 12,
+                          }}
+                        />
+                      )}
+                      {Array.from(selectedMetrics).map((metricName, index) => {
+                        const dataKey = getMetricKey(metricName);
+                        const color = getMetricColor(index);
+                        return (
+                          <Line
+                            key={metricName}
+                            type="monotone"
+                            dataKey={dataKey}
+                            stroke={color}
+                            strokeWidth={3}
+                            dot={{ r: 5 }}
+                            name={metricName}
+                            activeDot={{ r: 7 }}
+                          />
+                        );
+                      })}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
 
-                    {activeDateRangePicker === 'quick' && (
-                      <div className="absolute z-10 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Start Date
-                            </label>
-                            <input
-                              type="date"
-                              value={tempStartDate}
-                              onChange={(e) => setTempStartDate(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
+                {/* Quick Date Options */}
+                <div className="mb-4 border border-gray-200 rounded-lg p-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleQuickDateRange('today')}
+                      className="whitespace-nowrap"
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleQuickDateRange('yesterday')}
+                      className="whitespace-nowrap"
+                    >
+                      Yesterday
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleQuickDateRange('lastWeek')}
+                      className="whitespace-nowrap"
+                    >
+                      Last week
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleQuickDateRange('lastMonth')}
+                      className="whitespace-nowrap"
+                    >
+                      Last month
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleQuickDateRange('lastQuarter')}
+                      className="whitespace-nowrap"
+                    >
+                      Last quarter
+                    </Button>
+                    <div className="relative date-range-picker-container">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => {
+                              // Pre-fill with decent defaults if empty, logic preserved from original
+                              const end = new Date();
+                              const start = new Date();
+                              start.setMonth(start.getMonth() - 3);
+                              setGraphDateRange({ start, end });
+                            }}
+                          >
+                            <span className="whitespace-nowrap">Custom range</span>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {formatDateRange(graphDateRange.start, graphDateRange.end)}
+                            </span>
+                            <MdKeyboardArrowDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[280px] p-4" align="start">
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Start Date
+                              </label>
+                              <DatePicker
+                                date={tempStartDate ? new Date(tempStartDate) : undefined}
+                                setDate={(date) => {
+                                  if (date) {
+                                    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+                                    const isoDate = offsetDate.toISOString().split('T')[0];
+                                    setTempStartDate(isoDate);
+                                  }
+                                }}
+                                className="w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                End Date
+                              </label>
+                              <DatePicker
+                                date={tempEndDate ? new Date(tempEndDate) : undefined}
+                                setDate={(date) => {
+                                  if (date) {
+                                    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+                                    const isoDate = offsetDate.toISOString().split('T')[0];
+                                    setTempEndDate(isoDate);
+                                  }
+                                }}
+                                className="w-full"
+                              />
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                onClick={handleDateRangeApply}
+                                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                              >
+                                Apply
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={handleDateRangeCancel} // This might need a refactor if it relies on manual state closing
+                                className="flex-1"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              End Date
-                            </label>
-                            <input
-                              type="date"
-                              value={tempEndDate}
-                              onChange={(e) => setTempEndDate(e.target.value)}
-                              min={tempStartDate}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
-                          </div>
-                          <div className="flex gap-2 pt-2">
-                            <button
-                              onClick={handleDateRangeApply}
-                              className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                            >
-                              Apply
-                            </button>
-                            <button
-                              onClick={handleDateRangeCancel}
-                              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-          </div>
+            </div>
           )}
         </div>
       </main>
-      
+
       {/* Blank Footer Spacing */}
       <div className="h-16"></div>
     </div>

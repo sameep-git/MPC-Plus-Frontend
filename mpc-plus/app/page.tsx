@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError } from '../lib/api';
 import type { Machine as MachineType } from '../models/Machine';
 import type { UpdateModel as UpdateModelType } from '../models/Update';
@@ -9,6 +10,7 @@ import { Navbar, Button, UpdateCard } from '../components/ui';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
+  const router = useRouter();
   const [machines, setMachines] = useState<MachineType[]>([]);
   const [machinesLoading, setMachinesLoading] = useState(true);
   const [machinesError, setMachinesError] = useState<string | null>(null);
@@ -18,8 +20,6 @@ export default function Home() {
   const [updatesError, setUpdatesError] = useState<string | null>(null);
 
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
-  const [userLoading, setUserLoading] = useState(true);
-  const [userError, setUserError] = useState<string | null>(null);
 
   const handleMachineSelect = (machineId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -27,10 +27,10 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('selectedMachineId', machineId);
       // Navigate to the results page
-      window.location.href = NAVIGATION.ROUTES.MPC_RESULT;
+      router.push(NAVIGATION.ROUTES.MPC_RESULT);
     }
   };
-  
+
   const handleViewAllResults = (e: React.MouseEvent) => {
     e.preventDefault();
     // If there are machines, select the first one by default
@@ -40,7 +40,7 @@ export default function Home() {
       }
     }
     // Navigate to the results page
-    window.location.href = NAVIGATION.ROUTES.MPC_RESULT;
+    router.push(NAVIGATION.ROUTES.MPC_RESULT);
   };
 
   useEffect(() => {
@@ -54,8 +54,7 @@ export default function Home() {
       .finally(() => setUpdatesLoading(false));
     fetchUser()
       .then((data) => setUser(data))
-      .catch((err) => setUserError(handleApiError(err)))
-      .finally(() => setUserLoading(false));
+      .catch((err) => console.error(handleApiError(err))); // Log error but don't set state
   }, []);
 
   return (
@@ -63,7 +62,7 @@ export default function Home() {
       {/* Header */}
       <Navbar user={user} />
 
-  <main className="p-6 max-w-6xl mx-auto">
+      <main className="p-6 max-w-6xl mx-auto">
         {/* Welcome Section */}
         <section className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
@@ -72,8 +71,8 @@ export default function Home() {
           <p className="text-gray-600 mb-6 max-w-2xl">
             Monitor and manage your machine performance checks. View results, track updates, and access detailed analytics for your equipment.
           </p>
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             onClick={handleViewAllResults}
           >
             {UI_CONSTANTS.BUTTONS.VIEW_ALL_RESULTS}
@@ -84,9 +83,9 @@ export default function Home() {
         {machinesError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {machinesError}</p>
-            <Button 
+            <Button
               onClick={() => window.location.reload()}
-              variant="text"
+              variant="ghost"
               className="mt-2 text-red-600 hover:text-red-800"
             >
               {UI_CONSTANTS.BUTTONS.RETRY}
@@ -115,15 +114,15 @@ export default function Home() {
                     key={machine.id}
                     href={NAVIGATION.ROUTES.MPC_RESULT}
                     onClick={handleMachineClick}
-                    className="bg-purple-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-800 transition-colors min-w-[200px] relative inline-block text-center"
+                    className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-medium hover:bg-primary/90 transition-colors min-w-[200px] relative inline-block text-center shadow-sm"
                     title={`${machine.name}${machine.location ? ` | Location: ${machine.location}` : ''}${machine.type ? ` | Type: ${machine.type}` : ''}`}
                   >
                     <div className="font-bold">{machine.name}</div>
                     {machine.location && (
-                      <div className="text-xs text-purple-200">{machine.location}</div>
+                      <div className="text-xs text-primary-foreground/80">{machine.location}</div>
                     )}
                     {machine.type && (
-                      <div className="text-xs text-purple-300">{machine.type}</div>
+                      <div className="text-xs text-primary-foreground/70">{machine.type}</div>
                     )}
                   </Link>
                 );
@@ -162,7 +161,7 @@ export default function Home() {
                   machineId={update.machineId}
                   description={update.info ?? ''}
                   iconType={(update.type as keyof typeof UI_CONSTANTS.UPDATE_ICON_TYPE) || 'INFO'}
-                  onClick={() => {/* Handle click event */}}
+                  onClick={() => {/* Handle click event */ }}
                 />
               ))
             )}
