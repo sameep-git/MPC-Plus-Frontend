@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError, type User } from '../../lib/api';
-import { Navbar, Button } from '../../components/ui';
+import { fetchUser, handleApiError } from '../../lib/api';
+import { Navbar, Button, Input, Label, RadioGroup, RadioGroupItem, DatePicker } from '../../components/ui';
 import { NAVIGATION } from '../../constants';
 import {
   getSettings,
@@ -56,13 +56,12 @@ const SETTINGS_SECTIONS = [
   { id: 'beam-threshold-settings', label: 'Beam Thresholds' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
-  { id: 'other-settings', label: 'Other Settings' },
 ] as const;
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => getSettings());
   const [saved, setSaved] = useState(false);
@@ -78,7 +77,7 @@ export default function SettingsPage() {
         setError(errorMessage);
         console.error('Error loading user:', error);
       } finally {
-        setLoading(false);
+
       }
     };
 
@@ -89,14 +88,20 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handlePopState = () => {
-      // When user clicks back from settings, navigate to results page
-      router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+    const handlePopState = (event: PopStateEvent) => {
+      // Only navigate to calendar if we're not just changing the hash
+      // If the state has fromSettings, it means we're going back from settings
+      if (event.state?.fromSettings && !window.location.hash) {
+        router.replace(NAVIGATION.ROUTES.MPC_RESULT);
+      }
     };
 
     // Add a history entry so we can intercept the back button
-    window.history.pushState({ fromSettings: true }, '', window.location.href);
-    
+    // Only if we don't already have a hash in the URL
+    if (!window.location.hash) {
+      window.history.pushState({ fromSettings: true }, '', window.location.href);
+    }
+
     window.addEventListener('popstate', handlePopState);
 
     return () => {
@@ -220,13 +225,20 @@ export default function SettingsPage() {
           className="mb-8 flex flex-wrap gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm"
         >
           {SETTINGS_SECTIONS.map((section) => (
-            <a
+            <Button
               key={section.id}
-              href={`#${section.id}`}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 transition-colors"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                const element = document.getElementById(section.id);
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className="text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 border-gray-200 dark:border-gray-700"
             >
               {section.label}
-            </a>
+            </Button>
           ))}
         </nav>
 
@@ -247,26 +259,20 @@ export default function SettingsPage() {
             Choose your preferred theme for the application.
           </p>
           <div className="flex gap-4">
-            <button
+            <Button
               onClick={() => handleThemeChange('light')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                settings.theme === 'light'
-                  ? 'bg-purple-900 text-white dark:bg-purple-700'
-                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-              }`}
+              variant={settings.theme === 'light' ? 'default' : 'outline'}
+              className="w-32"
             >
               Light
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => handleThemeChange('dark')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                settings.theme === 'dark'
-                  ? 'bg-purple-900 text-white dark:bg-purple-700'
-                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-              }`}
+              variant={settings.theme === 'dark' ? 'default' : 'outline'}
+              className="w-32"
             >
               Dark
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -304,7 +310,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="text-xs text-gray-500 dark:text-gray-400">Min:</label>
-                        <input
+                        <Input
                           type="number"
                           step="0.1"
                           value={settings.thresholds[beamId][metric].min}
@@ -316,12 +322,12 @@ export default function SettingsPage() {
                               parseFloat(e.target.value) || 0
                             )
                           }
-                          className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-24 bg-white dark:bg-gray-800"
                         />
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="text-xs text-gray-500 dark:text-gray-400">Max:</label>
-                        <input
+                        <Input
                           type="number"
                           step="0.1"
                           value={settings.thresholds[beamId][metric].max}
@@ -333,7 +339,7 @@ export default function SettingsPage() {
                               parseFloat(e.target.value) || 0
                             )
                           }
-                          className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="w-24 bg-white dark:bg-gray-800"
                         />
                       </div>
                     </div>
@@ -362,28 +368,28 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Top Threshold (%)
                 </label>
-                <input
+                <Input
                   type="number"
                   step="0.01"
                   value={settings.graphThresholdTopPercent}
                   onChange={(e) =>
                     handleGraphThresholdChange(parseFloat(e.target.value) || 0, undefined, undefined)
                   }
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="bg-white dark:bg-gray-900"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Bottom Threshold (%)
                 </label>
-                <input
+                <Input
                   type="number"
                   step="0.01"
                   value={settings.graphThresholdBottomPercent}
                   onChange={(e) =>
                     handleGraphThresholdChange(undefined, parseFloat(e.target.value) || 0, undefined)
                   }
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="bg-white dark:bg-gray-900"
                 />
               </div>
             </div>
@@ -392,17 +398,17 @@ export default function SettingsPage() {
                 Threshold Color
               </label>
               <div className="flex gap-4 items-center">
-                <input
+                <Input
                   type="color"
                   value={settings.graphThresholdColor}
                   onChange={(e) => handleGraphThresholdChange(undefined, undefined, e.target.value)}
-                  className="w-16 h-10 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer"
+                  className="w-16 h-10 p-1 cursor-pointer"
                 />
-                <input
+                <Input
                   type="text"
                   value={settings.graphThresholdColor}
                   onChange={(e) => handleGraphThresholdChange(undefined, undefined, e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="flex-1 bg-white dark:bg-gray-900"
                   placeholder="#fef3c7"
                 />
               </div>
@@ -422,42 +428,20 @@ export default function SettingsPage() {
           </p>
 
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-3">
-              <label
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                  settings.baseline.mode === 'date'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:border-purple-400 dark:text-purple-200'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="baseline-mode"
-                  value="date"
-                  checked={settings.baseline.mode === 'date'}
-                  onChange={() => handleBaselineModeChange('date')}
-                  className="text-purple-600 focus:ring-purple-500"
-                />
-                <span className="text-sm font-medium">Use values from a specific date</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                  settings.baseline.mode === 'manual'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:border-purple-400 dark:text-purple-200'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="baseline-mode"
-                  value="manual"
-                  checked={settings.baseline.mode === 'manual'}
-                  onChange={() => handleBaselineModeChange('manual')}
-                  className="text-purple-600 focus:ring-purple-500"
-                />
-                <span className="text-sm font-medium">Set manual baseline values</span>
-              </label>
-            </div>
+            <RadioGroup
+              value={settings.baseline.mode}
+              onValueChange={(val) => handleBaselineModeChange(val as BaselineMode)}
+              className="flex flex-wrap gap-3"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="date" id="mode-date" />
+                <Label htmlFor="mode-date">Use values from a specific date</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="manual" id="mode-manual" />
+                <Label htmlFor="mode-manual">Set manual baseline values</Label>
+              </div>
+            </RadioGroup>
 
             {settings.baseline.mode === 'date' && (
               <div className="w-full md:w-auto">
@@ -465,12 +449,17 @@ export default function SettingsPage() {
                   Baseline Date
                 </label>
                 <div className="flex flex-row flex-wrap gap-3 items-center">
-                  <input
-                    type="date"
-                    value={settings.baseline.date ?? ''}
-                    max={new Date().toISOString().split('T')[0]}
-                    onChange={(e) => handleBaselineDateChange(e.target.value)}
-                    className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 md:flex-grow-0 md:w-64"
+                  <DatePicker
+                    date={settings.baseline.date ? new Date(settings.baseline.date) : undefined}
+                    setDate={(date) => {
+                      if (date) {
+                        // Adjust for timezone offset to ensure YYYY-MM-DD matches local selection
+                        const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+                        const isoDate = offsetDate.toISOString().split('T')[0];
+                        handleBaselineDateChange(isoDate);
+                      }
+                    }}
+                    className="w-64"
                   />
                   <Button onClick={handleBaselineUseToday} className="flex-shrink-0">
                     Use Today
@@ -487,12 +476,12 @@ export default function SettingsPage() {
                 {MANUAL_BASELINE_FIELDS.map(({ key, label, helper }) => (
                   <div key={key} className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{label}</label>
-                    <input
+                    <Input
                       type="number"
                       step="0.1"
                       value={settings.baseline.manualValues[key]}
                       onChange={(e) => handleManualBaselineChange(key, parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="bg-white dark:bg-gray-900"
                     />
                     {helper && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
                   </div>
@@ -502,50 +491,10 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Other Settings */}
-        <section
-          id="other-settings"
-          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
-        >
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-            Other Settings
-          </h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  Auto-refresh Data
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Automatically refresh data every 30 seconds
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
-              </label>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  Email Notifications
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Receive email notifications for threshold alerts
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
-              </label>
-            </div>
-          </div>
-        </section>
-
         {/* Action Buttons */}
         <div className="flex gap-4 justify-end">
           <Button
-            variant="text"
+            variant="ghost"
             onClick={handleReset}
             className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           >

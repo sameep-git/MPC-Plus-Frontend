@@ -2,63 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { MdKeyboardArrowDown } from 'react-icons/md';
-import { fetchMachines, fetchUser, handleApiError, type Machine, type User } from '../../lib/api';
-import { Navbar, Button } from '../../components/ui';
-import { UI_CONSTANTS, CALENDAR_CONSTANTS, API_CONSTANTS } from '../../constants';
 
-// Mock MPC result data for demonstration
-interface MPCResult {
-  id: string;
+import { fetchMachines, fetchUser, fetchResults, handleApiError } from '../../lib/api';
+import type { Machine as MachineType } from '../../models/Machine';
+import { Navbar, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui';
+import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
+
+// API response types
+interface DayCheckStatus {
   date: string;
-  machineId: string;
-  checks: {
-    geometry: boolean;
-    beam: boolean;
-  };
-  status: 'passed' | 'failed' | 'warning';
+  beamCheckStatus: 'pass' | 'warning' | 'fail' | null;
+  geometryCheckStatus: 'pass' | 'warning' | 'fail' | null;
 }
 
-// Mock function to generate MPC results
-const generateMockResults = (machineId: string, startDate: Date, endDate: Date): MPCResult[] => {
-  const results: MPCResult[] = [];
-  const currentDate = new Date(startDate);
-  
-  while (currentDate <= endDate) {
-    // Randomly generate results for demonstration
-    const hasGeometry = Math.random() > API_CONSTANTS.PROBABILITIES.GEOMETRY_CHECK;
-    const hasBeam = Math.random() > API_CONSTANTS.PROBABILITIES.BEAM_CHECK;
-    
-    if (hasGeometry || hasBeam) {
-      results.push({
-        id: `${machineId}-${currentDate.toISOString().split('T')[0]}`,
-        date: currentDate.toISOString().split('T')[0],
-        machineId,
-        checks: {
-          geometry: hasGeometry,
-          beam: hasBeam,
-        },
-        status: Math.random() > API_CONSTANTS.PROBABILITIES.WARNING_STATUS ? 'passed' : 'warning',
-      });
-    }
-    
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-  
-  return results;
-};
+interface MonthlyResults {
+  month: number;
+  year: number;
+  machineId: string;
+  checks: DayCheckStatus[];
+}
 
 export default function MPCResultPage() {
-  const searchParams = useSearchParams();
+
   const router = useRouter();
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const [machines, setMachines] = useState<MachineType[]>([]);
+  const [user, setUser] = useState<{ id: string; name?: string } | null>(null);
+  const [selectedMachine, setSelectedMachine] = useState<MachineType | null>(null);
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
-  const [mpcResults, setMpcResults] = useState<MPCResult[]>([]);
+  const [monthlyResults, setMonthlyResults] = useState<MonthlyResults | null>(null);
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,21 +46,21 @@ export default function MPCResultPage() {
         ]);
         setMachines(machinesData);
         setUser(userData);
-        
+
         // Set machine from localStorage or default to first machine
         if (machinesData.length > 0) {
           const savedMachineId = typeof window !== 'undefined' ? localStorage.getItem('selectedMachineId') : null;
-          const machineToSelect = savedMachineId 
+          const machineToSelect = savedMachineId
             ? machinesData.find(m => m.id === savedMachineId) || machinesData[0]
             : machinesData[0];
           setSelectedMachine(machineToSelect);
-          
+
           // Update localStorage to ensure it's set
           if (typeof window !== 'undefined') {
             localStorage.setItem('selectedMachineId', machineToSelect.id);
           }
         }
-        
+
         // Month and year default to current via initial state
       } catch (error) {
         const errorMessage = handleApiError(error);
@@ -101,10 +76,22 @@ export default function MPCResultPage() {
 
   useEffect(() => {
     if (selectedMachine) {
-      const firstDay = new Date(selectedYear, selectedMonth, 1);
-      const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
-      const results = generateMockResults(selectedMachine.id, firstDay, lastDay);
-      setMpcResults(results);
+      const loadResults = async () => {
+        try {
+          setError(null);
+          const data = await fetchResults(selectedMonth + 1, selectedYear, selectedMachine.id);
+          setMonthlyResults(data);
+        } catch (err) {
+          const errorMessage = handleApiError(err);
+          setError(errorMessage);
+          console.error('Error loading results:', err);
+          setMonthlyResults(null);
+        } finally {
+
+        }
+      };
+
+      loadResults();
     }
   }, [selectedMachine, selectedMonth, selectedYear]);
 
@@ -113,12 +100,12 @@ export default function MPCResultPage() {
       machine: selectedMachine?.name,
       month: selectedMonth + 1,
       year: selectedYear,
-      results: mpcResults.length
+      resultsCount: monthlyResults?.checks.length ?? 0
     });
     // TODO: Implement actual report generation
   };
-  
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -127,35 +114,51 @@ export default function MPCResultPage() {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
+
     const days = [];
-    
+
     // Add empty cells for days before the first day of the month
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
-    
+
     // Add days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       days.push({ day, month, year });
     }
-    
+
     return days;
   };
 
   const getResultsForDate = (dayObj: { day: number; month: number; year: number }) => {
-    if (!selectedMachine) return null;
-    
+    if (!monthlyResults) return null;
+
     const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-    return mpcResults.find(result => result.date === dateStr);
+    return monthlyResults.checks.find((check: DayCheckStatus) => {
+      // Extract just the date portion (YYYY-MM-DD) from the API response which may include timestamps
+      const checkDate = check.date.split('T')[0];
+      return checkDate === dateStr;
+    });
   };
 
   const handleDateClick = (dayObj: { day: number; month: number; year: number }) => {
     const results = getResultsForDate(dayObj);
     if (results) {
-      // Navigate to detail page with the date as a query parameter
+      // Navigate to detail page with the date passed through router state (hidden from URL)
       const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-      router.push(`/result-detail?date=${dateStr}`);
+      // Store the date and a guard flag in sessionStorage for the detail page to retrieve
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('resultDetailFrom', '1');
+        sessionStorage.setItem('resultDetailDate', dateStr);
+        if (selectedMachine) {
+          sessionStorage.setItem('resultDetailMachineId', selectedMachine.id);
+        }
+        // Also store the day's status to pre-fill the UI
+        try {
+          sessionStorage.setItem('resultDetailDayStatus', JSON.stringify(results));
+        } catch { }
+      }
+      router.push(`/result-detail`);
     }
   };
 
@@ -182,7 +185,7 @@ export default function MPCResultPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar user={user} />
-      
+
       <main className="p-6">
         {/* Header */}
         <div className="flex justify-between items-start mb-8">
@@ -203,9 +206,9 @@ export default function MPCResultPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
-              variant="text"
+            <Button
+              onClick={() => window.location.reload()}
+              variant="ghost"
               className="mt-2 text-red-600 hover:text-red-800"
             >
               {UI_CONSTANTS.BUTTONS.RETRY}
@@ -219,23 +222,24 @@ export default function MPCResultPage() {
           <div className="flex items-center space-x-4">
             <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.MACHINE}</label>
             <div className="relative">
-              <select
+              <Select
                 value={selectedMachine?.id || ''}
-                onChange={(e) => {
-                  const machine = machines.find(m => m.id === e.target.value);
+                onValueChange={(val) => {
+                  const machine = machines.find(m => m.id === val);
                   setSelectedMachine(machine || null);
                 }}
-                className="bg-purple-900 text-white px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                {machines.map((machine) => (
-                  <option key={machine.id} value={machine.id}>
-                    {machine.name}
-                  </option>
-                ))}
-              </select>
-              <MdKeyboardArrowDown 
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white pointer-events-none" 
-              />
+                <SelectTrigger className="w-[200px] bg-purple-900 text-white border-purple-800">
+                  <SelectValue placeholder="Select Machine" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machines.map((machine) => (
+                    <SelectItem key={machine.id} value={machine.id}>
+                      {machine.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -244,38 +248,44 @@ export default function MPCResultPage() {
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-gray-700">Month</label>
               <div className="relative">
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                <Select
+                  value={selectedMonth.toString()}
+                  onValueChange={(val) => setSelectedMonth(Number(val))}
                 >
-                  {monthNames.map((name, idx) => (
-                    <option key={name} value={idx}>{name}</option>
-                  ))}
-                </select>
-                <MdKeyboardArrowDown 
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" 
-                />
+                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthNames.map((name, idx) => (
+                      <SelectItem key={name} value={idx.toString()}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-gray-700">Year</label>
               <div className="relative">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg font-medium appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                <Select
+                  value={selectedYear.toString()}
+                  onValueChange={(val) => setSelectedYear(Number(val))}
                 >
-                  {Array.from({ length: 11 }).map((_, i) => {
-                    const y = today.getFullYear() - 5 + i;
-                    return (
-                      <option key={y} value={y}>{y}</option>
-                    );
-                  })}
-                </select>
-                <MdKeyboardArrowDown 
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" 
-                />
+                  <SelectTrigger className="w-[120px] bg-white text-gray-900 border-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 6 }).map((_, i) => {
+                      const y = today.getFullYear() - 5 + i;
+                      return (
+                        <SelectItem key={y} value={y.toString()}>
+                          {y}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -285,7 +295,9 @@ export default function MPCResultPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           {/* Month/Year Heading with Navigation */}
           <div className="flex justify-between items-center mb-6 px-4">
-            <button 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 if (selectedMonth === 0) {
                   setSelectedMonth(11);
@@ -294,17 +306,17 @@ export default function MPCResultPage() {
                   setSelectedMonth(prev => prev - 1);
                 }
               }}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              aria-label="Previous month"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-            </button>
+            </Button>
             <h2 className="text-xl font-semibold text-gray-900">
               {monthNames[selectedMonth]} {selectedYear}
             </h2>
-            <button 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 if (selectedMonth === 11) {
                   setSelectedMonth(0);
@@ -313,13 +325,11 @@ export default function MPCResultPage() {
                   setSelectedMonth(prev => prev + 1);
                 }
               }}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              aria-label="Next month"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-            </button>
+            </Button>
           </div>
 
           {/* Calendar Grid */}
@@ -330,40 +340,49 @@ export default function MPCResultPage() {
                 {day}
               </div>
             ))}
-            
+
             {/* Calendar days */}
             {getDaysInMonth(new Date(selectedYear, selectedMonth, 1)).map((dayObj, index) => {
               if (dayObj === null) {
                 return <div key={`empty-${index}`} className="p-2"></div>;
               }
-              
+
               const results = getResultsForDate(dayObj);
               const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
-              const hasResults = results && (results.checks.geometry || results.checks.beam);
-              
+              const hasResults = results && (results.beamCheckStatus || results.geometryCheckStatus);
+
               return (
                 <div
                   key={uniqueKey}
                   onClick={() => hasResults && handleDateClick(dayObj)}
-                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${
-                    hasResults 
-                      ? 'hover:bg-gray-50 cursor-pointer hover:border-purple-300' 
-                      : ''
-                  }`}
+                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${hasResults
+                    ? 'hover:bg-gray-50 cursor-pointer hover:border-purple-300'
+                    : ''
+                    }`}
                 >
                   <div className="text-sm font-medium text-gray-900 mb-1">
                     {dayObj.day}
                   </div>
-                  
+
                   {results && (
                     <div className="space-y-1">
-                      {results.checks.geometry && (
-                        <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                      {results.geometryCheckStatus && (
+                        <div className={`text-xs px-2 py-1 rounded ${results.geometryCheckStatus === 'pass'
+                          ? 'bg-green-100 text-green-800'
+                          : results.geometryCheckStatus === 'warning'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                          }`}>
                           {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
                         </div>
                       )}
-                      {results.checks.beam && (
-                        <div className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                      {results.beamCheckStatus && (
+                        <div className={`text-xs px-2 py-1 rounded ${results.beamCheckStatus === 'pass'
+                          ? 'bg-green-100 text-green-800'
+                          : results.beamCheckStatus === 'warning'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                          }`}>
                           {UI_CONSTANTS.CHECKS.BEAM_CHECK}
                         </div>
                       )}
@@ -376,7 +395,7 @@ export default function MPCResultPage() {
         </div>
 
         {/* Results Summary */}
-        {selectedMachine && (
+        {selectedMachine && monthlyResults && (
           <div className="mt-8 p-4 bg-gray-50 rounded-lg">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {UI_CONSTANTS.TITLES.RESULTS_SUMMARY} {selectedMachine.name}
@@ -384,18 +403,20 @@ export default function MPCResultPage() {
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
-                <span className="ml-2 font-medium">{mpcResults.length}</span>
+                <span className="ml-2 font-medium">
+                  {monthlyResults.checks.filter(c => c.beamCheckStatus || c.geometryCheckStatus).length}
+                </span>
               </div>
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.GEOMETRY_CHECKS}</span>
                 <span className="ml-2 font-medium">
-                  {mpcResults.filter(r => r.checks.geometry).length}
+                  {monthlyResults.checks.filter((c: DayCheckStatus) => c.geometryCheckStatus).length}
                 </span>
               </div>
               <div>
                 <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.BEAM_CHECKS}</span>
                 <span className="ml-2 font-medium">
-                  {mpcResults.filter(r => r.checks.beam).length}
+                  {monthlyResults.checks.filter((c: DayCheckStatus) => c.beamCheckStatus).length}
                 </span>
               </div>
             </div>

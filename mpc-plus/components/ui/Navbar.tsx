@@ -3,11 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import UserMenu from './UserMenu';
-import { type User } from '../../lib/api';
 import { NAVIGATION } from '../../constants';
 
 interface NavbarProps {
-  user: User | null;
+  user: { id: string; name?: string } | null;
 }
 
 export default function Navbar({ user }: NavbarProps) {
