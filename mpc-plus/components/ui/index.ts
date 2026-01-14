@@ -1,4 +1,4 @@
-export * from './button';
+export * from './Button';
 export * from './input';
 export * from './select';
 export * from './card';
