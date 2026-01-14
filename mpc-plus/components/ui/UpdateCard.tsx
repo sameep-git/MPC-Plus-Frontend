@@ -18,9 +18,9 @@ const iconMap: Record<string, typeof MdInfo> = {
 };
 
 const iconColorMap: Record<string, string> = {
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.INFO]: 'bg-purple-900',
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.THRESHOLD]: 'bg-yellow-500',
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.SIGNOFF]: 'bg-red-500',
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.INFO]: 'bg-primary',
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.THRESHOLD]: 'bg-yellow-500', // Keep specific warning color or use a warning variant if available
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.SIGNOFF]: 'bg-destructive',
 };
 
 export const UpdateCard = ({
@@ -31,12 +31,12 @@ export const UpdateCard = ({
   onClick
 }: UpdateCardProps) => {
   const IconComponent = iconMap[iconType.toUpperCase()] || defaultIcon;
-  const iconColorClass = iconColorMap[iconType] || 'bg-purple-900';
+  const iconColorClass = iconColorMap[iconType] || 'bg-primary';
   const heading = machineId ? `Machine ${machineId}` : (title ?? 'Update');
   const bodyCopy = description ?? 'No additional information available.';
 
   return (
-    <div 
+    <div
       className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer"
       onClick={onClick}
     >
