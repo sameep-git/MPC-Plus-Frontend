@@ -14,7 +14,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdShowChart, MdClose, MdClear } from 'react-icons/md';
-import { fetchUser, handleApiError, fetchBeams } from '../../lib/api';
+import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -26,9 +26,17 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
 } from '../../components/ui';
-import { UI_CONSTANTS, CALENDAR_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
+import { UI_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
+import type { GeoCheck } from '../../models/GeoCheck';
+import type { Beam } from '../../models/Beam';
 
 const getGraphThresholdSettings = () => {
   const settings = getSettings();
@@ -48,6 +56,8 @@ const getMetricKey = (metricName: string): string => {
 };
 
 // Extract beam type from check ID (e.g., "beam-2.5x" -> "2.5x", "beam-6xfff" -> "6xFFF")
+// Extract beam type from check ID (e.g., "beam-2.5x" -> "2.5x", "beam-6xfff" -> "6xFFF")
+/* Unused helper
 const getBeamTypeFromCheckId = (checkId: string): string | null => {
   if (checkId.startsWith('beam-')) {
     const beamType = checkId.replace('beam-', '');
@@ -59,6 +69,7 @@ const getBeamTypeFromCheckId = (checkId: string): string | null => {
   }
   return null;
 };
+*/
 
 // Create beam-specific metric name
 const createBeamSpecificMetricName = (baseMetricName: string, beamType: string | null): string => {
@@ -152,8 +163,24 @@ export default function ResultDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Parse a YYYY-MM-DD string as a local Date to avoid UTC offset shifting
+  const parseLocalDateString = (s: string): Date => {
+    const [y, m, d] = s.split('-').map((n) => Number(n));
+    if (!y || !m || !d) return new Date(s);
+    return new Date(y, m - 1, d);
+  };
+
   // Get date from sessionStorage (passed from results page) or use current date
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('resultDetailDate');
+      if (stored) {
+        const [y, m, d] = stored.split('-').map((n) => Number(n));
+        if (y && m && d) return new Date(y, m - 1, d);
+      }
+    }
+    return new Date();
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -165,7 +192,10 @@ export default function ResultDetailPage() {
         return;
       }
 
-      setSelectedDate(parseLocalDateString(storedDate));
+      // Date already set by lazy init, no need to set again if it matches.
+      // But keeping session consumption logic.
+      // setSelectedDate(parseLocalDateString(storedDate)); // Removed to avoid double fetch/render
+
       // Mark as consumed but keep values to avoid React StrictMode double-effect redirects
       sessionStorage.setItem('resultDetailFrom', 'consumed');
     }
@@ -200,14 +230,11 @@ export default function ResultDetailPage() {
   const [baselineSettings, setBaselineSettings] = useState(() => getBaselineSettingsSnapshot());
 
   // Base metric names (without beam type)
-  const baseMetricNames = [
-    'Output Change (%)',
-    'Uniformity Change (%)',
-    'Center Shift',
-  ];
+  // const baseMetricNames = [ ... ]; // Unused now
 
   // API-backed check results
   const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
+  // const [geoChecks, setGeoChecks] = useState<GeoCheck[]>([]); // Unused
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -246,63 +273,246 @@ export default function ResultDetailPage() {
         })();
         if (!machineId) return;
 
-        // Build initial results with geometry check + beam checks
-        const initial: CheckResult[] = [
-          { id: 'geometry', name: 'Geometry Check', status: 'PASS', metrics: [] },
-          { id: 'beam-2.5x', name: 'Beam Check (2.5x)', status: 'PASS', metrics: [] },
-          { id: 'beam-6x', name: 'Beam Check (6x)', status: 'PASS', metrics: [] },
-          { id: 'beam-6xfff', name: 'Beam Check (6xFFF)', status: 'PASS', metrics: [] },
-          { id: 'beam-10x', name: 'Beam Check (10x)', status: 'PASS', metrics: [] },
-        ];
+        // Initialize collections
+        let loadedGeoChecks: GeoCheck[] = [];
+        let loadedBeams: Beam[] = [];
+        let availableBeamTypes: string[] = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
 
-        // Map UI beam ids to API types
-        const typeMap: Record<string, string> = {
-          'beam-2.5x': '2.5x',
-          'beam-6x': '6x',
-          'beam-6xfff': '6xff',
-          'beam-10x': '10x',
-        };
+        try {
+          // Fetch Geometry Checks
+          loadedGeoChecks = await fetchGeoChecks({
+            machineId,
+            startDate: dateStr,
+            endDate: dateStr
+          });
 
-        const resultsCopy = [...initial];
+          // Fetch Beam Checks
+          loadedBeams = await fetchBeams({
+            machineId,
+            startDate: dateStr,
+            endDate: dateStr
+          });
 
-        // Helper: try multiple type variants and date params to improve compatibility
-        const getFirstBeam = async (type: string) => {
-          const variants = [type, type.toLowerCase(), type.toUpperCase()];
-          // Special handling for FFF variants
-          if (type.toLowerCase() === '6xff') variants.push('6xFFF', '6xfff');
-          for (const v of variants) {
-            try {
-              let beams = await fetchBeams({ machineId, type: v, date: dateStr });
-              if (Array.isArray(beams) && beams.length > 0) return beams[0];
-              // Fallback: try using start-date/end-date with the same day
-              beams = await fetchBeams({ machineId, type: v, startDate: dateStr, endDate: dateStr });
-              if (Array.isArray(beams) && beams.length > 0) return beams[0];
-            } catch (_) {
-              // continue to next variant
+          // Fetch beam types from API
+          try {
+            const types = await fetchBeamTypes();
+            if (types && types.length > 0) {
+              availableBeamTypes = types;
             }
+          } catch (e) {
+            console.error('Error fetching beam types:', e);
           }
-          return null;
-        };
 
-        await Promise.all(
-          resultsCopy
-            .filter(r => r.id.startsWith('beam-'))
-            .map(async (r) => {
-              const apiType = typeMap[r.id] || r.id.replace('beam-', '');
-              const b = await getFirstBeam(apiType);
-              const metrics: CheckMetric[] = [];
-              const beamType = getBeamTypeFromCheckId(r.id);
-              baseMetricNames.forEach((baseName) => {
-                const name = createBeamSpecificMetricName(baseName, beamType);
-                let value: number | string = '';
-                if (baseName.includes('Output')) value = (b as any)?.relOutput ?? '';
-                else if (baseName.includes('Uniformity')) value = (b as any)?.relUniformity ?? '';
-                else if (baseName.includes('Center Shift')) value = (b as any)?.centerShift ?? '';
-                metrics.push({ name, value, thresholds: '', absoluteValue: '', status: 'pass' });
-              });
-              r.metrics = metrics;
-            })
-        );
+        } catch (e) {
+          console.error('Error fetching data:', e);
+        }
+
+        // Build result structure
+
+        // Process Beam Checks based on available types to ensure all are displayed
+        const beamCheckResults: CheckResult[] = [];
+
+        availableBeamTypes.forEach(type => {
+          const beam = loadedBeams.find(b => b.type === type);
+          const metrics: CheckMetric[] = [];
+
+          if (beam) {
+            // Add standard beam metrics
+            if (beam.relOutput !== undefined && beam.relOutput !== null) {
+              const name = createBeamSpecificMetricName('Relative Output', type);
+              metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
+            }
+            if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
+              const name = createBeamSpecificMetricName('Relative Uniformity', type);
+              metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
+            }
+            if (beam.centerShift !== undefined && beam.centerShift !== null) {
+              const name = createBeamSpecificMetricName('Center Shift', type);
+              metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
+            }
+          } else {
+            // Missing data for this beam type - show placeholder
+            const metricsList = ['Relative Output', 'Relative Uniformity', 'Center Shift'];
+            metricsList.forEach(m => {
+              metrics.push({ name: createBeamSpecificMetricName(m, type), value: '-', thresholds: '', absoluteValue: '', status: 'warning' });
+            });
+          }
+
+          if (metrics.length > 0) {
+            beamCheckResults.push({
+              id: `beam-${type}`,
+              name: `Beam Check (${type})`,
+              status: beam ? 'PASS' : 'WARNING',
+              metrics
+            });
+          }
+        });
+
+        // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
+        const geoLeaves: CheckResult[] = [];
+        if (loadedGeoChecks.length > 0) {
+          const gc = loadedGeoChecks[0]; // Assuming one per day for now
+
+          // IsoCenterGroup
+          geoLeaves.push({
+            id: 'geo-isocenter',
+            name: 'IsoCenter Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Iso Center Size', value: gc.isoCenterSize ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Iso Center MV Offset', value: gc.isoCenterMVOffset ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Iso Center KV Offset', value: gc.isoCenterKVOffset ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // BeamGroup (Geo)
+          geoLeaves.push({
+            id: 'geo-beam',
+            name: 'Beam Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Relative Output', value: gc.relativeOutput ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Relative Uniformity', value: gc.relativeUniformity ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Center Shift', value: gc.centerShift ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // CollimationGroup
+          geoLeaves.push({
+            id: 'geo-collimation',
+            name: 'Collimation Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Collimation Rotation Offset', value: gc.collimationRotationOffset ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // GantryGroup
+          geoLeaves.push({
+            id: 'geo-gantry',
+            name: 'Gantry Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Gantry Absolute', value: gc.gantryAbsolute ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Gantry Relative', value: gc.gantryRelative ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // EnhancedCouchGroup
+          geoLeaves.push({
+            id: 'geo-couch',
+            name: 'Enhanced Couch Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Couch Lat', value: gc.couchLat ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Couch Lng', value: gc.couchLng ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Couch Vrt', value: gc.couchVrt ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Couch Rtn Fine', value: gc.couchRtnFine ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Couch Rtn Large', value: gc.couchRtnLarge ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Max Position Error', value: gc.couchMaxPositionError ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Rotation Induced Shift', value: gc.rotationInducedCouchShiftFullRange ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // MLC Leaves A
+          const mlcAMetrics: CheckMetric[] = [];
+          if (gc.mlcLeavesA) {
+            Object.entries(gc.mlcLeavesA).forEach(([key, val]) => {
+              mlcAMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+            });
+          }
+          geoLeaves.push({
+            id: 'geo-mlc-a',
+            name: 'MLC Leaves A',
+            status: 'PASS',
+            metrics: mlcAMetrics
+          });
+
+          // MLC Leaves B
+          const mlcBMetrics: CheckMetric[] = [];
+          if (gc.mlcLeavesB) {
+            Object.entries(gc.mlcLeavesB).forEach(([key, val]) => {
+              mlcBMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+            });
+          }
+          geoLeaves.push({
+            id: 'geo-mlc-b',
+            name: 'MLC Leaves B',
+            status: 'PASS',
+            metrics: mlcBMetrics
+          });
+
+          // MLC Offsets
+          geoLeaves.push({
+            id: 'geo-mlc-offsets',
+            name: 'MLC Offsets',
+            status: 'PASS',
+            metrics: [
+              { name: 'Mean Offset A', value: gc.meanOffsetA ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Max Offset A', value: gc.maxOffsetA ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Mean Offset B', value: gc.meanOffsetB ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Max Offset B', value: gc.maxOffsetB ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // Backlash Leaves A
+          const backlashAMetrics: CheckMetric[] = [];
+          if (gc.mlcBacklashA) {
+            Object.entries(gc.mlcBacklashA).forEach(([key, val]) => {
+              backlashAMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+            });
+          }
+          geoLeaves.push({
+            id: 'geo-backlash-a',
+            name: 'Backlash Leaves A',
+            status: 'PASS',
+            metrics: backlashAMetrics
+          });
+
+          // Backlash Leaves B
+          const backlashBMetrics: CheckMetric[] = [];
+          if (gc.mlcBacklashB) {
+            Object.entries(gc.mlcBacklashB).forEach(([key, val]) => {
+              backlashBMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+            });
+          }
+          geoLeaves.push({
+            id: 'geo-backlash-b',
+            name: 'Backlash Leaves B',
+            status: 'PASS',
+            metrics: backlashBMetrics
+          });
+
+
+          // Jaws Group
+          geoLeaves.push({
+            id: 'geo-jaws',
+            name: 'Jaws Group',
+            status: 'PASS',
+            metrics: [
+              { name: 'Jaw X1', value: gc.jawX1 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Jaw X2', value: gc.jawX2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Jaw Y1', value: gc.jawY1 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Jaw Y2', value: gc.jawY2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+
+          // Jaws Parallelism
+          geoLeaves.push({
+            id: 'geo-jaws-parallelism',
+            name: 'Jaws Parallelism',
+            status: 'PASS',
+            metrics: [
+              { name: 'Parallelism X1', value: gc.jawParallelismX1 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Parallelism X2', value: gc.jawParallelismX2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Parallelism Y1', value: gc.jawParallelismY1 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+              { name: 'Parallelism Y2', value: gc.jawParallelismY2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
+            ]
+          });
+        }
+
+        const consolidatedResults = [...beamCheckResults, ...geoLeaves];
+        setCheckResults(consolidatedResults);
 
         // Apply statuses from monthly day status if provided
         try {
@@ -317,15 +527,22 @@ export default function ResultDetailPage() {
               if (s === 'warning') return 'WARNING';
               return 'PASS';
             };
-            const geomRes = resultsCopy.find(r => r.id === 'geometry');
-            if (geomRes && geom) geomRes.status = mapStatus(geom);
-            resultsCopy.forEach(r => { if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam); });
+
+            // Note: Since we flattened the structure to "Leaves", we don't have a single "geometry" or "beam" check here.
+            // But we can apply status to the groups if we want.
+            // For now, this logic was targeting specific IDs 'geometry' and 'beam-group' which we removed.
+            // We can iterate and set status for geo-checks and beam-checks
+            const newResults = [...consolidatedResults];
+            newResults.forEach(r => {
+              if (r.id.startsWith('geo-') && geom) r.status = mapStatus(geom);
+              if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam);
+            });
+            setCheckResults(newResults);
           }
         } catch { }
 
-        setCheckResults(resultsCopy);
       } catch (err) {
-        console.error('Error loading daily checks:', err);
+        console.error(err);
       }
     };
 
@@ -334,7 +551,7 @@ export default function ResultDetailPage() {
 
   useEffect(() => {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
-  }, [graphDateRange.start.getTime(), graphDateRange.end.getTime(), selectedMetrics]);
+  }, [graphDateRange, selectedMetrics]);
 
   useEffect(() => {
     const refreshSettings = () => {
@@ -383,12 +600,6 @@ export default function ResultDetailPage() {
     return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   };
 
-  // Parse a YYYY-MM-DD string as a local Date to avoid UTC offset shifting
-  const parseLocalDateString = (s: string): Date => {
-    const [y, m, d] = s.split('-').map((n) => Number(n));
-    if (!y || !m || !d) return new Date(s);
-    return new Date(y, m - 1, d);
-  };
 
   const formatDateRange = (start: Date, end: Date): string => {
     return `${start.getDate()} ${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getFullYear().toString().slice(-2)} - ${end.getDate()} ${end.toLocaleDateString('en-US', { month: 'short' })} ${end.getFullYear().toString().slice(-2)}`;
@@ -477,8 +688,9 @@ export default function ResultDetailPage() {
     console.log('Generating daily report for:', formatDate(selectedDate));
   };
 
-  const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS_SHORT;
-  const monthNames = CALENDAR_CONSTANTS.MONTH_NAMES;
+  // Unused constants
+  // const weekDays = CALENDAR_CONSTANTS.WEEK_DAYS_SHORT;
+  // const monthNames = CALENDAR_CONSTANTS.MONTH_NAMES;
 
   // Calculate Y-axis domain based on selected metrics and data
 
@@ -569,6 +781,7 @@ export default function ResultDetailPage() {
       baselineDateInRange,
       requestedDate: baselineSettings.date,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baselineSettings, graphData, selectedMetrics]);
 
   const normalizedGraphData = useMemo(() => {
@@ -811,109 +1024,210 @@ export default function ResultDetailPage() {
         <div className={`grid gap-8 mt-8 ${showGraph ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
           {/* Left Column - Check Results */}
           <div className="space-y-4">
-            {checkResults.map((check) => {
-              const isExpanded = expandedChecks.has(check.id);
-              const statusColor = check.status === 'PASS' ? 'text-green-600' :
-                check.status === 'FAIL' ? 'text-red-600' : 'text-yellow-600';
 
-              return (
-                <div key={check.id} className="border border-gray-200 rounded-lg">
-                  {/* Check Header */}
-                  <Button
-                    variant="ghost"
-                    onClick={() => toggleCheck(check.id)}
-                    className="w-full flex items-center justify-between p-4 h-auto hover:bg-gray-50 hover:no-underline"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="font-medium text-gray-900">{check.name}</span>
-                      <span className={`font-semibold ${statusColor}`}>- {check.status}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {isExpanded ? (
-                        <MdExpandLess className="w-6 h-6 text-gray-600" />
-                      ) : (
-                        <MdExpandMore className="w-6 h-6 text-gray-600" />
+            {/* 1. Beam Checks Group */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <Button
+                variant="ghost"
+                onClick={() => toggleCheck('group-beam-checks')}
+                className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
+              >
+                <span className="font-semibold text-gray-900">Beam Checks</span>
+                {expandedChecks.has('group-beam-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+              </Button>
+
+              {expandedChecks.has('group-beam-checks') && (
+                <div className="p-2 space-y-2">
+                  {checkResults.filter(c => c.id.startsWith('beam-')).map(check => (
+                    <div key={check.id} className="border border-gray-100 rounded-lg">
+                      <Button
+                        variant="ghost"
+                        onClick={() => toggleCheck(check.id)}
+                        className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
+                          <span className={`text-xs font-semibold ${check.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>- {check.status}</span>
+                        </div>
+                        {expandedChecks.has(check.id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                      </Button>
+                      {expandedChecks.has(check.id) && (
+                        <div className="p-3 overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[50%]">Metric</TableHead>
+                                <TableHead className="text-right">Value</TableHead>
+                                <TableHead>Abs</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {check.metrics.map((m, idx) => (
+                                <TableRow key={idx}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                      {m.status === 'pass' && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                      {m.name}
+                                      <Button variant="ghost" size="icon" className="h-4 w-4"
+                                        onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
+                                        <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right">{formatMetricValue(m.name, m.value)}</TableCell>
+                                  <TableCell>{m.absoluteValue || '-'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
                       )}
                     </div>
-                  </Button>
-
-                  {/* Check Details Table */}
-                  {isExpanded && check.metrics.length > 0 && (
-                    <div className="border-t border-gray-200 p-4 overflow-x-auto">
-                      <table className="w-full table-fixed min-w-[640px]">
-                        <colgroup>
-                          <col className="w-[52%]" />
-                          <col className="w-[16%] min-w-[120px]" />
-                          <col className="w-[16%] min-w-[140px]" />
-                          <col className="w-[16%] min-w-[140px]" />
-                        </colgroup>
-                        <thead>
-                          <tr className="border-b border-gray-200">
-                            <th className="text-left py-2 pr-6 pl-3 text-xs font-semibold tracking-wide text-gray-500">Metric</th>
-                            <th className="text-right py-2 pr-4 pl-3 text-xs font-semibold tracking-wide text-gray-500">Value</th>
-                            <th className="text-left py-2 px-4 text-xs font-semibold tracking-wide text-gray-500">Thresholds</th>
-                            <th className="text-left py-2 pl-3 pr-6 text-xs font-semibold tracking-wide text-gray-500">Absolute Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {check.metrics.map((metric, index) => (
-                            <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                              <td className="py-2 pr-6 pl-3 align-top">
-                                <div className="flex items-center gap-2">
-                                  {metric.status === 'pass' && (
-                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    </div>
-                                  )}
-                                  <span className="text-xs font-medium text-gray-900 leading-tight">{metric.name}</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedMetrics(prev => {
-                                        const newSet = new Set(prev);
-                                        if (newSet.has(metric.name)) {
-                                          newSet.delete(metric.name);
-                                        } else {
-                                          newSet.add(metric.name);
-                                        }
-                                        return newSet;
-                                      });
-                                      setShowGraph(true);
-                                    }}
-                                    className={`h-6 w-6 p-0 rounded transition-colors ${selectedMetrics.has(metric.name) ? 'bg-purple-100 text-purple-600 hover:bg-purple-200' : 'text-gray-400 hover:bg-gray-100'
-                                      }`}
-                                    title={`${selectedMetrics.has(metric.name) ? 'Remove' : 'Add'} graph for ${metric.name}`}
-                                  >
-                                    <MdShowChart className="w-3 h-3" />
-                                  </Button>
-                                </div>
-                              </td>
-                              <td className="py-2 pr-4 pl-3 text-right text-xs font-semibold text-gray-900 tabular-nums whitespace-nowrap">
-                                {formatMetricValue(metric.name, metric.value)}
-                              </td>
-                              <td className="py-2 px-4 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis" title={metric.thresholds || undefined}>
-                                {metric.thresholds || '-'}
-                              </td>
-                              <td className="py-2 pl-3 pr-6 text-xs text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis" title={
-                                metric.absoluteValue !== undefined && metric.absoluteValue !== ''
-                                  ? String(metric.absoluteValue)
-                                  : undefined
-                              }>
-                                {metric.absoluteValue || '-'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            {/* 2. Geometry Checks Group */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <Button
+                variant="ghost"
+                onClick={() => toggleCheck('group-geo-checks')}
+                className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
+              >
+                <span className="font-semibold text-gray-900">Geometry Checks</span>
+                {expandedChecks.has('group-geo-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+              </Button>
+
+              {expandedChecks.has('group-geo-checks') && (
+                <div className="p-2 space-y-2">
+                  {/* Render Geo Subgroups */}
+                  {['geo-isocenter', 'geo-beam', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-para', 'geo-mlc-offsets'].map(id => {
+                    const check = checkResults.find(c => c.id === id);
+                    if (!check) return null;
+                    return (
+                      <div key={id} className="border border-gray-100 rounded-lg">
+                        <Button
+                          variant="ghost"
+                          onClick={() => toggleCheck(id)}
+                          className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
+                        >
+                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
+                          {expandedChecks.has(id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                        </Button>
+                        {expandedChecks.has(id) && (
+                          <div className="p-3 overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Metric</TableHead>
+                                  <TableHead className="text-right">Value</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {check.metrics.map((m, idx) => (
+                                  <TableRow key={idx}>
+                                    <TableCell className="font-medium">
+                                      <div className="flex items-center gap-2">
+                                        {m.name}
+                                        <Button variant="ghost" size="icon" className="h-4 w-4"
+                                          onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
+                                          <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-right">{formatMetricValue(m.name, m.value)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Nested Groups for MLC/Backlash */}
+                  {/* MLC Leaves Group containing Leaves A and Leaves B */}
+                  <div className="border border-gray-100 rounded-lg">
+                    <Button variant="ghost" onClick={() => toggleCheck('geo-mlc-leaves-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
+                      <span className="font-medium text-sm text-gray-700">MLC Leaves</span>
+                      {expandedChecks.has('geo-mlc-leaves-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                    </Button>
+                    {expandedChecks.has('geo-mlc-leaves-group') && (
+                      <div className="pl-4 pr-2 pb-2 space-y-2">
+                        {['geo-mlc-a', 'geo-mlc-b'].map(id => {
+                          const check = checkResults.find(c => c.id === id);
+                          if (!check) return null;
+                          return (
+                            <div key={id} className="border border-gray-100 rounded-lg">
+                              <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
+                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
+                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                              </Button>
+                              {expandedChecks.has(id) && (
+                                <div className="p-2">
+                                  <Table>
+                                    <TableBody>
+                                      {check.metrics.map((m, idx) => (
+                                        <TableRow key={idx}>
+                                          <TableCell className="py-1 text-xs">{m.name}</TableCell>
+                                          <TableCell className="py-1 text-xs text-right">{formatMetricValue(m.name, m.value)}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Backlash Leaves Group */}
+                  <div className="border border-gray-100 rounded-lg">
+                    <Button variant="ghost" onClick={() => toggleCheck('geo-backlash-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
+                      <span className="font-medium text-sm text-gray-700">Backlash Leaves</span>
+                      {expandedChecks.has('geo-backlash-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                    </Button>
+                    {expandedChecks.has('geo-backlash-group') && (
+                      <div className="pl-4 pr-2 pb-2 space-y-2">
+                        {['geo-backlash-a', 'geo-backlash-b'].map(id => {
+                          const check = checkResults.find(c => c.id === id);
+                          if (!check) return null;
+                          return (
+                            <div key={id} className="border border-gray-100 rounded-lg">
+                              <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
+                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
+                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                              </Button>
+                              {expandedChecks.has(id) && (
+                                <div className="p-2">
+                                  <Table>
+                                    <TableBody>
+                                      {check.metrics.map((m, idx) => (
+                                        <TableRow key={idx}>
+                                          <TableCell className="py-1 text-xs">{m.name}</TableCell>
+                                          <TableCell className="py-1 text-xs text-right">{formatMetricValue(m.name, m.value)}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+            </div>
+
           </div>
 
           {/* Right Column - Graph and Date Selection */}

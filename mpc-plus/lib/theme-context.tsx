@@ -89,6 +89,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Load settings from localStorage on mount
   useEffect(() => {
+    // eslint-disable-next-line
     setMounted(true);
     const savedSettings = localStorage.getItem('mpc-plus-settings');
     if (savedSettings) {
@@ -106,7 +107,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (!mounted) return;
 
     const root = document.documentElement;
-    const effectiveTheme = settings.theme === 'auto' 
+    const effectiveTheme = settings.theme === 'auto'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : settings.theme;
 
