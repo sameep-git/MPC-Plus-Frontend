@@ -14,3 +14,4 @@ export { default as Navbar } from './Navbar';
 export { default as UserMenu } from './UserMenu';
 export * from './UpdateCard';
 export * from './table';
+export * from './dialog';

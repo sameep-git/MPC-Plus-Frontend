@@ -32,6 +32,13 @@ import {
   TableHead,
   TableBody,
   TableCell,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  Label,
+  Checkbox,
 } from '../../components/ui';
 import { UI_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
@@ -235,6 +242,55 @@ export default function ResultDetailPage() {
   // API-backed check results
   const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
   // const [geoChecks, setGeoChecks] = useState<GeoCheck[]>([]); // Unused
+
+  // Report Generation Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date());
+  const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date());
+  const [reportSelectedChecks, setReportSelectedChecks] = useState<Set<string>>(new Set());
+
+  // Available checks for selection (derived from checkResults)
+  const availableReportChecks = useMemo(() => {
+    const beams = checkResults
+      .filter(c => c.id.startsWith('beam-'))
+      .map(b => ({ id: b.id, name: b.name, type: 'beam' }));
+
+    // Geometry checks (assuming roughly they start with geo-)
+    const geos = checkResults
+      .filter(c => c.id.startsWith('geo-'))
+      .map(g => ({ id: g.id, name: g.name, type: 'geo' }));
+
+    return [...beams, ...geos];
+  }, [checkResults]);
+
+  // Initial selection of all checks when available
+  useEffect(() => {
+    if (availableReportChecks.length > 0 && reportSelectedChecks.size === 0) {
+      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    }
+  }, [availableReportChecks]);
+
+  const toggleReportCheck = (checkId: string) => {
+    setReportSelectedChecks(prev => {
+      const next = new Set(prev);
+      if (next.has(checkId)) {
+        next.delete(checkId);
+      } else {
+        next.add(checkId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllReportChecks = (checked: boolean) => {
+    if (checked) {
+      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    } else {
+      setReportSelectedChecks(new Set());
+    }
+  };
+
+  const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -685,7 +741,17 @@ export default function ResultDetailPage() {
   };
 
   const handleGenerateReport = () => {
-    console.log('Generating daily report for:', formatDate(selectedDate));
+    setIsReportModalOpen(true);
+  };
+
+  const handleSaveReport = () => {
+    // Disabled functionality for now
+    console.log('Save report clicked', {
+      start: reportStartDate,
+      end: reportEndDate,
+      checks: Array.from(reportSelectedChecks)
+    });
+    setIsReportModalOpen(false);
   };
 
   // Unused constants
@@ -950,9 +1016,25 @@ export default function ResultDetailPage() {
           <p className="text-gray-600 mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
           </p>
-          <div className="flex items-center gap-4 flex-wrap">
-            <Button onClick={handleGenerateReport} size="lg">
+          <div className="flex items-center w-full gap-4 flex-wrap">
+            <Button
+              onClick={handleGenerateReport}
+              size="lg"
+              variant="outline"
+              className="text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
+            >
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
+            </Button>
+            <Button
+              onClick={() => setShowGraph(prev => !prev)}
+              size="lg"
+              variant={showGraph ? "secondary" : "outline"}
+              className={showGraph
+                ? "bg-purple-100 text-purple-900 border-purple-200 hover:bg-purple-200"
+                : "text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"}
+            >
+              Graph
+              <MdShowChart className={`ml-2 h-5 w-5 ${showGraph ? 'text-purple-700' : 'text-gray-500 group-hover:text-purple-600'}`} />
             </Button>
             {/* Date Range Picker Dropdown
             <div className="relative date-range-picker-container">
@@ -1498,6 +1580,111 @@ export default function ResultDetailPage() {
 
       {/* Blank Footer Spacing */}
       <div className="h-16"></div>
+      {/* Report Generation Modal */}
+      <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Generate Report</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Date Range Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <DatePicker
+                  date={reportStartDate}
+                  setDate={(d) => d && setReportStartDate(d)}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <DatePicker
+                  date={reportEndDate}
+                  setDate={(d) => d && setReportEndDate(d)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Check Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Select Checks</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all-checks"
+                    checked={isAllChecksSelected}
+                    onCheckedChange={(c) => toggleAllReportChecks(c as boolean)}
+                  />
+                  <label
+                    htmlFor="select-all-checks"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Select All
+                  </label>
+                </div>
+              </div>
+              <div className="border rounded-md p-2 h-[300px] overflow-y-auto space-y-4">
+                {availableReportChecks.length > 0 ? (
+                  <>
+                    {/* Beam Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1">Beam Checks</div>
+                      <div className="space-y-1">
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
+                      </div>
+                    </div>
+
+                    {/* Geometry Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1">Geometry Checks</div>
+                      <div className="space-y-1">
+                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 text-center">No checks available</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveReport}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
