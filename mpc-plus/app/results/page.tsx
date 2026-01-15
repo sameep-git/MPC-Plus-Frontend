@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 import { fetchMachines, fetchUser, fetchResults, handleApiError } from '../../lib/api';
 import type { Machine as MachineType } from '../../models/Machine';
