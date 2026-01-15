@@ -1,0 +1,1000 @@
+openapi: 3.0.0
+info:
+  title: Senior Design Project API
+  description: API for managing beam data, machines, results, baselines, and thresholds
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+  - url: https://staging-api.example.com/v1
+    description: Staging server
+
+paths:
+  /baseline:
+    get:
+      tags:
+        - Baselines
+      summary: Get baseline for specific parameters
+      description: Retrieves baseline data for a specific machine, check type, and metric
+      parameters:
+        - name: machineId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Machine identifier
+        - name: checkType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [geometry, beam]
+          description: Type of check
+        - name: beamVariant
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Beam variant (e.g., 6x, 6e)
+        - name: metricType
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Type of metric
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Baseline'
+        '404':
+          description: Baseline not found
+    
+    put:
+      tags:
+        - Baselines
+      summary: Update baseline
+      description: Updates baseline data for specific parameters
+      parameters:
+        - name: machineId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Machine identifier
+        - name: checkType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [geometry, beam]
+          description: Type of check
+        - name: beamVariant
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Beam variant
+        - name: metricType
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Type of metric
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Date of baseline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Baseline'
+      responses:
+        '200':
+          description: Baseline updated successfully
+        '400':
+          description: Bad request
+        '404':
+          description: Baseline not found
+
+  /thresholds/all:
+    get:
+      tags:
+        - Thresholds
+      summary: Get all thresholds
+      description: Returns all threshold configurations
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Threshold'
+
+  /thresholds:
+    get:
+      tags:
+        - Thresholds
+      summary: Get specific threshold
+      description: Retrieves threshold data for specific parameters
+      parameters:
+        - name: machineId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Machine identifier
+        - name: checkType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [geometry, beam]
+          description: Type of check
+        - name: beamVariant
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Beam variant
+        - name: metricType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [output_change, uniformity_change, center_shift]
+          description: Type of metric
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Threshold'
+        '404':
+          description: Threshold not found
+
+  /updates:
+    get:
+      tags:
+        - Updates
+      summary: Get all updates
+      description: Returns a list of all updates
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Update'
+    
+    post:
+      tags:
+        - Updates
+      summary: Create a new update
+      description: Adds a new update entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Update'
+      responses:
+        '201':
+          description: Update created successfully
+        '400':
+          description: Bad request
+    
+    put:
+      tags:
+        - Updates
+      summary: Update an existing update
+      description: Modifies an existing update entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Update'
+      responses:
+        '200':
+          description: Update modified successfully
+        '400':
+          description: Bad request
+        '404':
+          description: Update not found
+    
+    delete:
+      tags:
+        - Updates
+      summary: Delete an update
+      description: Removes an update entry
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Update identifier
+      responses:
+        '204':
+          description: Update deleted successfully
+        '404':
+          description: Update not found
+
+  /login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticates a user and returns a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+              required:
+                - username
+                - password
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+        '401':
+          description: Unauthorized
+
+  /image:
+    get:
+      tags:
+        - Image
+      summary: Get image
+      description: Retrieves image data
+      responses:
+        '200':
+          description: Successful response
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+
+
+  /geochecks:
+    get:
+      tags:
+        - Geocheck
+      summary: Get geometry checks
+      description: Retrieves geometry check data, optionally filtered by machine, type, and date range
+      parameters:
+        - name: machine-id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Machine identifier
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Type of beam (e.g., 6xff)
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Specific date for geometry check
+        - name: start-date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Start date for date range
+        - name: end-date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: End date for date range
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeoCheck'
+
+    post:
+      tags:
+        - Geocheck
+      summary: Create a geometry check
+      description: Creates a new geometry check entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoCheck'
+      responses:
+        '201':
+          description: Geometry check created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoCheck'
+        '400':
+          description: Bad request
+
+  /geochecks/{id}:
+    get:
+      tags:
+        - Geocheck
+      summary: Get geometry check by ID
+      description: Retrieves a single geometry check by its identifier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique geometry check identifier
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoCheck'
+        '404':
+          description: Geometry check not found
+
+    put:
+      tags:
+        - Geocheck
+      summary: Update geometry check
+      description: Updates an existing geometry check
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique geometry check identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoCheck'
+      responses:
+        '200':
+          description: Geometry check updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoCheck'
+        '400':
+          description: Bad request
+        '404':
+          description: Geometry check not found
+
+    delete:
+      tags:
+        - Geocheck
+      summary: Delete geometry check
+      description: Removes a geometry check from the system
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique geometry check identifier
+      responses:
+        '204':
+          description: Geometry check deleted successfully
+        '404':
+          description: Geometry check not found
+
+
+components:
+  schemas:
+    Beam:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the beam
+        type:
+          type: string
+          description: Type of beam (e.g., 6e, 9e, 12e, 16e, 10x, 15x, 6xff)
+        date:
+          type: string
+          format: date
+          description: Date of the beam data
+        path:
+          type: string
+          description: File path to beam data
+        rel_uniformity:
+          type: number
+          format: double
+          description: Relative uniformity value
+        rel_output:
+          type: number
+          format: double
+          description: Relative output value
+        center_shift:
+          type: number
+          format: double
+          description: Center shift value (for X-Beam only)
+        machine_id:
+          type: string
+          description: Associated machine identifier
+        note:
+          type: string
+          description: Notes about the beam
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - type
+        - date
+        - machine_id
+
+    Machine:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the machine
+        location:
+          type: string
+          description: Physical location of the machine
+        name:
+          type: string
+          description: Name of the machine
+        type:
+          type: string
+          description: Type of machine
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - location
+        - name
+        - type
+
+    Result:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the result
+        month:
+          type: integer
+          description: Month of the result
+        year:
+          type: integer
+          description: Year of the result
+        machine_id:
+          type: string
+          description: Machine identifier
+        beam_check:
+          type: object
+          description: Beam check data
+        status:
+          type: string
+          description: Status of the check
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    MonthlyResults:
+      type: object
+      properties:
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: Month queried
+        year:
+          type: integer
+          description: Year queried
+        machine_id:
+          type: string
+          description: Machine identifier
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayCheckStatus'
+          description: Daily check statuses for the month
+      required:
+        - month
+        - year
+        - machine_id
+        - checks
+
+    DayCheckStatus:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: Date of checks
+        beamCheckStatus:
+          type: string
+          nullable: true
+          enum: [pass, warning, fail]
+          description: Overall beam check status for the day (null if no checks)
+        geometryCheckStatus:
+          type: string
+          nullable: true
+          enum: [pass, warning, fail]
+          description: Overall geometry check status for the day (null if no checks)
+      required:
+        - date
+        - beamCheckStatus
+        - geometryCheckStatus
+
+    GeoCheck:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the geometry check
+        type:
+          type: string
+          description: Type of beam (e.g., 6xff)
+        date:
+          type: string
+          format: date
+          description: Date of the geometry check
+        machine_id:
+          type: string
+          description: Associated machine identifier
+        path:
+          type: string
+          description: File path to the geometry check data
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the geometry check
+        iso_center_size:
+          type: number
+          format: double
+          description: Iso center size measurement
+        iso_center_mv_offset:
+          type: number
+          format: double
+          description: Iso center MV offset measurement
+        iso_center_kv_offset:
+          type: number
+          format: double
+          description: Iso center KV offset measurement
+        relative_output:
+          type: number
+          format: double
+          description: Relative output value
+        relative_uniformity:
+          type: number
+          format: double
+          description: Relative uniformity value
+        center_shift:
+          type: number
+          format: double
+          description: Center shift value
+        collimation_rotation_offset:
+          type: number
+          format: double
+          description: Collimation rotation offset measurement
+        gantry_absolute:
+          type: number
+          format: double
+          description: Gantry absolute measurement
+        gantry_relative:
+          type: number
+          format: double
+          description: Gantry relative measurement
+        couch_max_position_error:
+          type: number
+          format: double
+          description: Maximum couch position error
+        couch_lat:
+          type: number
+          format: double
+          description: Couch lateral measurement
+        couch_lng:
+          type: number
+          format: double
+          description: Couch longitudinal measurement
+        couch_vrt:
+          type: number
+          format: double
+          description: Couch vertical measurement
+        couch_rtn_fine:
+          type: number
+          format: double
+          description: Couch rotation fine measurement
+        couch_rtn_large:
+          type: number
+          format: double
+          description: Couch rotation large measurement
+        rotation_induced_couch_shift_full_range:
+          type: number
+          format: double
+          description: Rotation induced couch shift full range
+        max_offset_a:
+          type: number
+          format: double
+          description: Maximum offset for MLC bank A
+        max_offset_b:
+          type: number
+          format: double
+          description: Maximum offset for MLC bank B
+        mean_offset_a:
+          type: number
+          format: double
+          description: Mean offset for MLC bank A
+        mean_offset_b:
+          type: number
+          format: double
+          description: Mean offset for MLC bank B
+        mlc_backlash_max_a:
+          type: number
+          format: double
+          description: Maximum backlash for MLC bank A
+        mlc_backlash_max_b:
+          type: number
+          format: double
+          description: Maximum backlash for MLC bank B
+        mlc_backlash_mean_a:
+          type: number
+          format: double
+          description: Mean backlash for MLC bank A
+        mlc_backlash_mean_b:
+          type: number
+          format: double
+          description: Mean backlash for MLC bank B
+        jaw_x1:
+          type: number
+          format: double
+          description: Jaw X1 measurement
+        jaw_x2:
+          type: number
+          format: double
+          description: Jaw X2 measurement
+        jaw_y1:
+          type: number
+          format: double
+          description: Jaw Y1 measurement
+        jaw_y2:
+          type: number
+          format: double
+          description: Jaw Y2 measurement
+        jaw_parallelism_x1:
+          type: number
+          format: double
+          description: Jaw parallelism X1 measurement
+        jaw_parallelism_x2:
+          type: number
+          format: double
+          description: Jaw parallelism X2 measurement
+        jaw_parallelism_y1:
+          type: number
+          format: double
+          description: Jaw parallelism Y1 measurement
+        jaw_parallelism_y2:
+          type: number
+          format: double
+          description: Jaw parallelism Y2 measurement
+        mlc_leaves_a:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: MLC leaves bank A measurements keyed by leaf label (Leaf11-Leaf50)
+        mlc_leaves_b:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: MLC leaves bank B measurements keyed by leaf label (Leaf11-Leaf50)
+        mlc_backlash_a:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: MLC backlash bank A measurements keyed by leaf label (Leaf11-Leaf50)
+        mlc_backlash_b:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: MLC backlash bank B measurements keyed by leaf label (Leaf11-Leaf50)
+        note:
+          type: string
+          description: Notes about the geometry check
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - type
+        - date
+        - machine_id
+
+    Baseline:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier
+        machine_id:
+          type: string
+          description: Machine identifier
+        check_type:
+          type: string
+          enum: [geometry, beam]
+          description: Type of check
+        beam_variant:
+          type: string
+          description: Beam variant
+        metric_type:
+          type: string
+          description: Type of metric (e.g., all beam type metrics)
+        date:
+          type: string
+          format: date
+          description: Date of baseline
+        value:
+          type: number
+          description: Baseline value
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - machine_id
+        - check_type
+        - metric_type
+        - date
+
+    Threshold:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier
+        machine_id:
+          type: string
+          description: Machine identifier
+        check_type:
+          type: string
+          enum: [geometry, beam]
+          description: Type of check
+        beam_variant:
+          type: string
+          description: Beam variant
+        metric_type:
+          type: string
+          enum: [output_change, uniformity_change, center_shift]
+          description: Type of metric
+        value:
+          type: number
+          description: Threshold value
+        last_updated:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - machine_id
+        - check_type
+        - metric_type
+        - last_updated
+
+    Update:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the update
+        machine_id:
+          type: string
+          description: Associated machine
+        info:
+          type: string
+          description: Update information
+        type:
+          type: string
+          description: Type of update
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - machine_id
+        - info
+        - type
+
+    GeoCheckMlcLeavesA:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique record identifier
+        geocheck_id:
+          type: string
+          format: uuid
+          description: Related geometry check id
+        leaf_number:
+          type: integer
+          description: Leaf number (int4)
+        leaf_value:
+          type: number
+          format: double
+          description: Leaf value
+      required:
+        - id
+        - geocheck_id
+        - leaf_number
+
+    GeoCheckMlcLeavesB:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique record identifier
+        geocheck_id:
+          type: string
+          format: uuid
+          description: Related geometry check id
+        leaf_number:
+          type: integer
+          description: Leaf number (int4)
+        leaf_value:
+          type: number
+          format: double
+          description: Leaf value
+      required:
+        - id
+        - geocheck_id
+        - leaf_number
+
+    GeoCheckMlcBacklashA:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique record identifier
+        geocheck_id:
+          type: string
+          format: uuid
+          description: Related geometry check id
+        leaf_number:
+          type: integer
+          description: Leaf number (int4)
+        backlash_value:
+          type: number
+          format: double
+          description: Backlash value
+      required:
+        - id
+        - geocheck_id
+        - leaf_number
+
+    GeoCheckMlcBacklashB:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique record identifier
+        geocheck_id:
+          type: string
+          format: uuid
+          description: Related geometry check id
+        leaf_number:
+          type: integer
+          description: Leaf number (int4)
+        backlash_value:
+          type: number
+          format: double
+          description: Backlash value
+      required:
+        - id
+        - geocheck_id
+        - leaf_number
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
