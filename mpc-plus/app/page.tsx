@@ -58,17 +58,17 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background transition-colors">
       {/* Header */}
       <Navbar user={user} />
 
       <main className="p-6 max-w-6xl mx-auto">
         {/* Welcome Section */}
         <section className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-foreground mb-4">
             {UI_CONSTANTS.TITLES.WELCOME}, {user?.name || UI_CONSTANTS.STATUS.USER}!
           </h1>
-          <p className="text-gray-600 mb-6 max-w-2xl">
+          <p className="text-muted-foreground mb-6 max-w-2xl">
             Monitor and manage your machine performance checks. View results, track updates, and access detailed analytics for your equipment.
           </p>
           <Button
@@ -95,7 +95,7 @@ export default function Home() {
 
         {/* Today's Machine Updates */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">{UI_CONSTANTS.TITLES.TODAYS_UPDATES}</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-6">{UI_CONSTANTS.TITLES.TODAYS_UPDATES}</h2>
           <div className="flex flex-wrap gap-4">
             {machinesLoading ? (
               // Loading skeleton
@@ -137,7 +137,7 @@ export default function Home() {
         {/* Latest Updates */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">{UI_CONSTANTS.TITLES.LATEST_UPDATES}</h2>
+            <h2 className="text-3xl font-bold text-foreground mb-4">{UI_CONSTANTS.TITLES.LATEST_UPDATES}</h2>
             <Button size="lg">
               {UI_CONSTANTS.BUTTONS.VIEW_ALL_UPDATES}
             </Button>
@@ -170,7 +170,7 @@ export default function Home() {
 
         {/* Additional Information */}
         <div className="mt-8 p-6 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-gray-600 text-sm">
+          <p className="text-muted-foreground text-sm">
             Stay informed about important changes, threshold alerts, and system updates. Click on any update card above to view more details.
           </p>
         </div>

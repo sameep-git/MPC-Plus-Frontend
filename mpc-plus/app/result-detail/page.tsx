@@ -13,7 +13,7 @@ import {
   ReferenceArea,
   ReferenceLine
 } from 'recharts';
-import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdShowChart, MdClose, MdClear } from 'react-icons/md';
+import { ChevronDown, ChevronUp, LineChart as ChartIcon, X } from 'lucide-react';
 import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams } from '../../lib/api';
 import {
   Navbar,
@@ -245,9 +245,14 @@ export default function ResultDetailPage() {
 
   // Report Generation Modal State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date());
-  const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date());
+  // Initialize with selectedDate
+  const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date(selectedDate));
+  const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date(selectedDate));
   const [reportSelectedChecks, setReportSelectedChecks] = useState<Set<string>>(new Set());
+
+  // Sign Off Modal State
+  const [isSignOffModalOpen, setIsSignOffModalOpen] = useState(false);
+  const [signOffSelectedChecks, setSignOffSelectedChecks] = useState<Set<string>>(new Set());
 
   // Available checks for selection (derived from checkResults)
   const availableReportChecks = useMemo(() => {
@@ -270,6 +275,12 @@ export default function ResultDetailPage() {
     }
   }, [availableReportChecks]);
 
+  // Sync report dates with selectedDate
+  useEffect(() => {
+    setReportStartDate(new Date(selectedDate));
+    setReportEndDate(new Date(selectedDate));
+  }, [selectedDate]);
+
   const toggleReportCheck = (checkId: string) => {
     setReportSelectedChecks(prev => {
       const next = new Set(prev);
@@ -291,6 +302,28 @@ export default function ResultDetailPage() {
   };
 
   const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
+
+  const toggleSignOffCheck = (checkId: string) => {
+    setSignOffSelectedChecks(prev => {
+      const next = new Set(prev);
+      if (next.has(checkId)) {
+        next.delete(checkId);
+      } else {
+        next.add(checkId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllSignOffChecks = (checked: boolean) => {
+    if (checked) {
+      setSignOffSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    } else {
+      setSignOffSelectedChecks(new Set());
+    }
+  };
+
+  const isAllSignOffChecksSelected = availableReportChecks.length > 0 && signOffSelectedChecks.size === availableReportChecks.length;
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -915,7 +948,7 @@ export default function ResultDetailPage() {
       case 'info':
         return 'bg-blue-50 border-blue-200 text-blue-700';
       default:
-        return 'bg-gray-50 border-gray-200 text-gray-600';
+        return 'bg-gray-50 border-gray-200 text-muted-foreground';
     }
   };
 
@@ -991,7 +1024,7 @@ export default function ResultDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-background transition-colors">
         <Navbar user={user} />
         <main className="p-6">
           <div className="animate-pulse">
@@ -1004,16 +1037,16 @@ export default function ResultDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background transition-colors">
       <Navbar user={user} />
 
       <main className="p-6 max-w-7xl mx-auto">
         {/* Page Title and Subtitle */}
         <div className="mb-6">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-foreground mb-4">
             MPC Results for {formatDate(selectedDate)}
           </h1>
-          <p className="text-gray-600 mb-6 max-w-2xl">
+          <p className="text-muted-foreground mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
           </p>
           <div className="flex items-center w-full gap-4 flex-wrap">
@@ -1021,9 +1054,17 @@ export default function ResultDetailPage() {
               onClick={handleGenerateReport}
               size="lg"
               variant="outline"
-              className="text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
+              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
             >
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
+            </Button>
+            <Button
+              onClick={() => setIsSignOffModalOpen(true)}
+              size="lg"
+              variant="outline"
+              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
+            >
+              Sign Off
             </Button>
             <Button
               onClick={() => setShowGraph(prev => !prev)}
@@ -1031,28 +1072,28 @@ export default function ResultDetailPage() {
               variant={showGraph ? "secondary" : "outline"}
               className={showGraph
                 ? "bg-purple-100 text-purple-900 border-purple-200 hover:bg-purple-200"
-                : "text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"}
+                : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"}
             >
               Graph
-              <MdShowChart className={`ml-2 h-5 w-5 ${showGraph ? 'text-purple-700' : 'text-gray-500 group-hover:text-purple-600'}`} />
+              <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-purple-700' : 'text-gray-500 group-hover:text-purple-600'}`} />
             </Button>
             {/* Date Range Picker Dropdown
             <div className="relative date-range-picker-container">
               <button
                 onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
-                className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
+                className="bg-white border border-gray-300 text-foreground px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
               >
                 <span className="truncate">
                   {formatDateRange(graphDateRange.start, graphDateRange.end)}
                 </span>
-                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
               </button>
               
               {activeDateRangePicker === 'header' && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Start Date
                       </label>
                       <input
@@ -1063,7 +1104,7 @@ export default function ResultDetailPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         End Date
                       </label>
                       <input
@@ -1083,7 +1124,7 @@ export default function ResultDetailPage() {
                       </button>
                       <button
                         onClick={handleDateRangeCancel}
-                        className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                        className="flex-1 px-4 py-2 bg-gray-100 text-muted-foreground rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
                       >
                         Cancel
                       </button>
@@ -1114,8 +1155,8 @@ export default function ResultDetailPage() {
                 onClick={() => toggleCheck('group-beam-checks')}
                 className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
               >
-                <span className="font-semibold text-gray-900">Beam Checks</span>
-                {expandedChecks.has('group-beam-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+                <span className="font-semibold text-foreground">Beam Checks</span>
+                {expandedChecks.has('group-beam-checks') ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </Button>
 
               {expandedChecks.has('group-beam-checks') && (
@@ -1128,10 +1169,10 @@ export default function ResultDetailPage() {
                         className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
+                          <span className="font-medium text-sm text-muted-foreground">{check.name}</span>
                           <span className={`text-xs font-semibold ${check.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>- {check.status}</span>
                         </div>
-                        {expandedChecks.has(check.id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                        {expandedChecks.has(check.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </Button>
                       {expandedChecks.has(check.id) && (
                         <div className="p-3 overflow-x-auto">
@@ -1152,7 +1193,7 @@ export default function ResultDetailPage() {
                                       {m.name}
                                       <Button variant="ghost" size="icon" className="h-4 w-4"
                                         onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                        <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                        <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
                                       </Button>
                                     </div>
                                   </TableCell>
@@ -1177,8 +1218,8 @@ export default function ResultDetailPage() {
                 onClick={() => toggleCheck('group-geo-checks')}
                 className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
               >
-                <span className="font-semibold text-gray-900">Geometry Checks</span>
-                {expandedChecks.has('group-geo-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+                <span className="font-semibold text-foreground">Geometry Checks</span>
+                {expandedChecks.has('group-geo-checks') ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </Button>
 
               {expandedChecks.has('group-geo-checks') && (
@@ -1194,8 +1235,8 @@ export default function ResultDetailPage() {
                           onClick={() => toggleCheck(id)}
                           className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
                         >
-                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
-                          {expandedChecks.has(id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                          <span className="font-medium text-sm text-muted-foreground">{check.name}</span>
+                          {expandedChecks.has(id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
                         {expandedChecks.has(id) && (
                           <div className="p-3 overflow-x-auto">
@@ -1214,7 +1255,7 @@ export default function ResultDetailPage() {
                                         {m.name}
                                         <Button variant="ghost" size="icon" className="h-4 w-4"
                                           onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                          <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                          <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
                                         </Button>
                                       </div>
                                     </TableCell>
@@ -1233,8 +1274,8 @@ export default function ResultDetailPage() {
                   {/* MLC Leaves Group containing Leaves A and Leaves B */}
                   <div className="border border-gray-100 rounded-lg">
                     <Button variant="ghost" onClick={() => toggleCheck('geo-mlc-leaves-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
-                      <span className="font-medium text-sm text-gray-700">MLC Leaves</span>
-                      {expandedChecks.has('geo-mlc-leaves-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                      <span className="font-medium text-sm text-muted-foreground">MLC Leaves</span>
+                      {expandedChecks.has('geo-mlc-leaves-group') ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </Button>
                     {expandedChecks.has('geo-mlc-leaves-group') && (
                       <div className="pl-4 pr-2 pb-2 space-y-2">
@@ -1244,8 +1285,8 @@ export default function ResultDetailPage() {
                           return (
                             <div key={id} className="border border-gray-100 rounded-lg">
                               <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
-                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
-                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                                <span className="text-xs font-medium text-muted-foreground">{check.name}</span>
+                                {expandedChecks.has(id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               </Button>
                               {expandedChecks.has(id) && (
                                 <div className="p-2">
@@ -1271,8 +1312,8 @@ export default function ResultDetailPage() {
                   {/* Backlash Leaves Group */}
                   <div className="border border-gray-100 rounded-lg">
                     <Button variant="ghost" onClick={() => toggleCheck('geo-backlash-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
-                      <span className="font-medium text-sm text-gray-700">Backlash Leaves</span>
-                      {expandedChecks.has('geo-backlash-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                      <span className="font-medium text-sm text-muted-foreground">Backlash Leaves</span>
+                      {expandedChecks.has('geo-backlash-group') ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </Button>
                     {expandedChecks.has('geo-backlash-group') && (
                       <div className="pl-4 pr-2 pb-2 space-y-2">
@@ -1282,8 +1323,8 @@ export default function ResultDetailPage() {
                           return (
                             <div key={id} className="border border-gray-100 rounded-lg">
                               <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
-                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
-                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                                <span className="text-xs font-medium text-muted-foreground">{check.name}</span>
+                                {expandedChecks.has(id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               </Button>
                               {expandedChecks.has(id) && (
                                 <div className="p-2">
@@ -1331,7 +1372,7 @@ export default function ResultDetailPage() {
                               ? 'Select metrics...'
                               : `${selectedMetrics.size} metric${selectedMetrics.size > 1 ? 's' : ''} selected`}
                           </span>
-                          <MdKeyboardArrowDown className="w-4 h-4 text-gray-600 transition-transform group-data-[state=open]:rotate-180" />
+                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-64 max-h-60 overflow-y-auto" align="start">
@@ -1356,11 +1397,11 @@ export default function ResultDetailPage() {
                     <Button
                       onClick={handleClearSelections}
                       variant="ghost"
-                      className="text-gray-600 hover:text-gray-900 gap-2"
+                      className="text-muted-foreground hover:text-foreground gap-2"
                       title="Clear all selections"
                       disabled={selectedMetrics.size === 0}
                     >
-                      <MdClear className="w-4 h-4" />
+                      <X className="w-4 h-4" />
                       Clear
                     </Button>
                     <Button
@@ -1369,7 +1410,7 @@ export default function ResultDetailPage() {
                       size="icon"
                       title="Close graph"
                     >
-                      <MdClose className="w-5 h-5" />
+                      <X className="w-5 h-5" />
                     </Button>
                   </div>
                 </div>
@@ -1513,13 +1554,13 @@ export default function ResultDetailPage() {
                             <span className="text-xs text-muted-foreground whitespace-nowrap">
                               {formatDateRange(graphDateRange.start, graphDateRange.end)}
                             </span>
-                            <MdKeyboardArrowDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
+                            <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[280px] p-4" align="start">
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-muted-foreground mb-2">
                                 Start Date
                               </label>
                               <DatePicker
@@ -1535,7 +1576,7 @@ export default function ResultDetailPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-muted-foreground mb-2">
                                 End Date
                               </label>
                               <DatePicker
@@ -1625,13 +1666,13 @@ export default function ResultDetailPage() {
                   </label>
                 </div>
               </div>
-              <div className="border rounded-md p-2 h-[300px] overflow-y-auto space-y-4">
+              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
                 {availableReportChecks.length > 0 ? (
                   <>
                     {/* Beam Checks Group */}
                     <div>
-                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1">Beam Checks</div>
-                      <div className="space-y-1">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
+                      <div className="space-y-1 px-2">
                         {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
                           <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
                             <Checkbox
@@ -1653,8 +1694,8 @@ export default function ResultDetailPage() {
 
                     {/* Geometry Checks Group */}
                     <div>
-                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1">Geometry Checks</div>
-                      <div className="space-y-1">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
+                      <div className="space-y-1 px-2">
                         {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
                           <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
                             <Checkbox
@@ -1682,6 +1723,94 @@ export default function ResultDetailPage() {
           </div>
           <DialogFooter>
             <Button onClick={handleSaveReport}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Off Modal */}
+      <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Sign Off</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Select Checks</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all-signoff-checks"
+                    checked={isAllSignOffChecksSelected}
+                    onCheckedChange={(c) => toggleAllSignOffChecks(c as boolean)}
+                  />
+                  <label
+                    htmlFor="select-all-signoff-checks"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Select All
+                  </label>
+                </div>
+              </div>
+              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
+                {availableReportChecks.length > 0 ? (
+                  <>
+                    {/* Beam Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`signoff-check-${check.id}`}
+                              checked={signOffSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleSignOffCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`signoff-check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
+                      </div>
+                    </div>
+
+                    {/* Geometry Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`signoff-check-${check.id}`}
+                              checked={signOffSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleSignOffCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`signoff-check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 text-center">No checks available</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => {
+              console.log('Sign Off clicked', { checks: Array.from(signOffSelectedChecks) });
+              setIsSignOffModalOpen(false);
+            }}>Sign Off</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
