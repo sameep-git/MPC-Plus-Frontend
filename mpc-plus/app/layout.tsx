@@ -47,6 +47,12 @@ export default function RootLayout({
                     } else {
                       html.classList.remove('dark');
                     }
+                    
+                    if (parsed.accentColor && parsed.accentColor !== '#420039') {
+                      html.style.setProperty('--primary', parsed.accentColor);
+                      html.style.setProperty('--color-primary', parsed.accentColor);
+                      html.style.setProperty('--ring', parsed.accentColor);
+                    }
                   } else {
                     html.classList.remove('dark');
                   }

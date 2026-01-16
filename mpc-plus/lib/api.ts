@@ -52,10 +52,8 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/machines`;
-      console.log('[fetchMachines] Fetching:', url);
-      const result = await safeFetch(url);
-      console.log('[fetchMachines] Response:', result);
-      return result;
+
+      return await safeFetch(url);
     }
 
     if (supabase) {
@@ -68,7 +66,6 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
     console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
     return [];
   } catch (err) {
-    console.error('[fetchMachines] Error:', err);
     throw err;
   }
 };
@@ -99,9 +96,7 @@ export const fetchResults = async (month: number, year: number, machineId: strin
       url.searchParams.set('month', String(month));
       url.searchParams.set('year', String(year));
       url.searchParams.set('machineId', machineId);
-      console.log('[fetchResults] Fetching:', url.toString());
       const result = await safeFetch(url.toString());
-      console.log('[fetchResults] Response:', result);
       return result;
     }
 
@@ -189,6 +184,43 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
 
     return [] as BeamType[];
   } catch (err) {
+    throw err;
+  }
+};
+
+export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promise<BeamType[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/accept`;
+      const data = await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beamIds, acceptedBy })
+      });
+      return toCamelCase(data);
+    }
+
+    if (supabase) {
+      // Supabase direct Update approach
+      // Since we can't do a bulk update with dynamic values easily in one logical op if validation was needed,
+      // but here we are just setting fixed values for a list of IDs.
+      // Supabase-js can update multiple rows if the filter matches.
+      const { data, error } = await supabase
+        .from('beams')
+        .update({
+          accepted_by: acceptedBy,
+          accepted_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+        })
+        .in('id', beamIds)
+        .select();
+
+      if (error) throw error;
+      return toCamelCase(data) as BeamType[];
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[acceptBeams] Error:', err);
     throw err;
   }
 };

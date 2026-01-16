@@ -42,6 +42,7 @@ export interface BaselineSettings {
 
 export interface AppSettings {
   theme: Theme;
+  accentColor: string; // Hex color
   thresholds: BeamThresholds;
   graphThresholdTopPercent: number;
   graphThresholdBottomPercent: number;
@@ -90,8 +91,11 @@ const getDefaultBaselineSettings = (): BaselineSettings => ({
 const getDefaultThresholds = (): BeamThresholds =>
   JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
 
+export const DEFAULT_ACCENT_COLOR = '#420039';
+
 const getDefaultSettings = (): AppSettings => ({
   theme: 'light',
+  accentColor: DEFAULT_ACCENT_COLOR,
   thresholds: getDefaultThresholds(),
   graphThresholdTopPercent: 16.67,
   graphThresholdBottomPercent: 16.67,
@@ -146,8 +150,9 @@ export const saveSettings = (settings: AppSettings): void => {
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    // Apply theme immediately
+    // Apply theme and accent immediately
     applyTheme(settings.theme);
+    applyAccentColor(settings.accentColor);
   } catch (error) {
     console.error('Error saving settings:', error);
   }
@@ -158,6 +163,13 @@ export const updateTheme = (theme: Theme): void => {
   settings.theme = theme;
   saveSettings(settings);
   applyTheme(theme);
+};
+
+export const updateAccentColor = (color: string): void => {
+  const settings = getSettings();
+  settings.accentColor = color;
+  saveSettings(settings);
+  applyAccentColor(color);
 };
 
 export const updateThresholds = (thresholds: Partial<BeamThresholds>): void => {
@@ -207,4 +219,25 @@ export const applyTheme = (theme: Theme): void => {
   } else {
     root.classList.remove('dark');
   }
+};
+
+export const applyAccentColor = (color: string): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const root = document.documentElement;
+
+  if (!color || color === DEFAULT_ACCENT_COLOR) {
+    // If default or empty, remove overrides so CSS rules apply (handling dark/light mode automatically)
+    root.style.removeProperty('--primary');
+    root.style.removeProperty('--color-primary');
+    root.style.removeProperty('--ring');
+    return;
+  }
+
+  // Set CSS variables
+  root.style.setProperty('--primary', color);
+  root.style.setProperty('--color-primary', color);
+  root.style.setProperty('--ring', color);
 };

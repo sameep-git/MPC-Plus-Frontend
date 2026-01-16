@@ -3,16 +3,32 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError } from '../../lib/api';
-import { Navbar, Button, Input, Label, RadioGroup, RadioGroupItem, DatePicker } from '../../components/ui';
+import {
+  Navbar,
+  Button,
+  Input,
+  Label,
+  RadioGroup,
+  RadioGroupItem,
+  DatePicker,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '../../components/ui';
 import { NAVIGATION } from '../../constants';
+import { TEAM_COLORS } from '../../constants/teamColors';
 import {
   getSettings,
   getDefaultAppSettings,
   saveSettings,
   updateTheme,
+  updateAccentColor,
   updateThresholds,
   updateGraphThresholds,
   updateBaselineSettings,
+  DEFAULT_ACCENT_COLOR,
   type Theme,
   type BeamThresholds,
   type AppSettings,
@@ -52,7 +68,7 @@ const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: st
 ];
 
 const SETTINGS_SECTIONS = [
-  { id: 'theme-settings', label: 'Theme' },
+  { id: 'theme-settings', label: 'Theme & Accent' },
   { id: 'beam-threshold-settings', label: 'Beam Thresholds' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
@@ -112,6 +128,11 @@ export default function SettingsPage() {
   const handleThemeChange = (theme: Theme) => {
     updateTheme(theme);
     setSettings((prev) => ({ ...prev, theme }));
+  };
+
+  const handleAccentChange = (color: string) => {
+    updateAccentColor(color);
+    setSettings((prev) => ({ ...prev, accentColor: color }));
   };
 
   const handleThresholdChange = (
@@ -235,7 +256,7 @@ export default function SettingsPage() {
                   element.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
               }}
-              className="text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-200 border-gray-200 dark:border-gray-700"
+              className="text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary-foreground border-gray-200 dark:border-gray-700"
             >
               {section.label}
             </Button>
@@ -273,6 +294,38 @@ export default function SettingsPage() {
             >
               Dark
             </Button>
+          </div>
+
+          <div className="mt-8">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Accent Color
+            </h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              Select your favorite team color as the accent for the application.
+            </p>
+            <div className="max-w-md">
+              <Select
+                value={settings.accentColor}
+                onValueChange={handleAccentChange}
+              >
+                <SelectTrigger className="w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12">
+                  <SelectValue placeholder="Select a team color" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {TEAM_COLORS.map((team) => (
+                    <SelectItem key={team.color} value={team.color}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-4 h-4 rounded-full border border-gray-200 shadow-sm shrink-0"
+                          style={{ backgroundColor: team.color }}
+                        />
+                        <span className="truncate">{team.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </section>
 

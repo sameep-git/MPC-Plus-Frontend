@@ -3,9 +3,25 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { fetchMachines, fetchUser, fetchResults, handleApiError } from '../../lib/api';
+import { fetchMachines, fetchUser, fetchResults, handleApiError, fetchBeamTypes } from '../../lib/api';
 import type { Machine as MachineType } from '../../models/Machine';
-import { Navbar, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui';
+import {
+  Navbar,
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  Label,
+  Checkbox,
+  DatePicker
+} from '../../components/ui';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
 
 // API response types
@@ -35,6 +51,90 @@ export default function MPCResultPage() {
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Report Generation Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date());
+  const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date());
+  const [reportSelectedChecks, setReportSelectedChecks] = useState<Set<string>>(new Set());
+  const [availableReportChecks, setAvailableReportChecks] = useState<{ id: string; name: string; type: 'beam' | 'geo' }[]>([]);
+
+  // Initialize available checks
+  useEffect(() => {
+    const loadChecks = async () => {
+      // Static Geometry Checks
+      const geoChecks = [
+        { id: 'geo-isocenter', name: 'IsoCenter Group', type: 'geo' },
+        { id: 'geo-beam', name: 'Beam Group', type: 'geo' },
+        { id: 'geo-collimation', name: 'Collimation Group', type: 'geo' },
+        { id: 'geo-gantry', name: 'Gantry Group', type: 'geo' },
+        { id: 'geo-couch', name: 'Enhanced Couch Group', type: 'geo' },
+        { id: 'geo-mlc-a', name: 'MLC Leaves A', type: 'geo' },
+        { id: 'geo-mlc-b', name: 'MLC Leaves B', type: 'geo' },
+        { id: 'geo-mlc-offsets', name: 'MLC Offsets', type: 'geo' },
+        { id: 'geo-backlash-a', name: 'Backlash Leaves A', type: 'geo' },
+        { id: 'geo-backlash-b', name: 'Backlash Leaves B', type: 'geo' },
+        { id: 'geo-jaws', name: 'Jaws Group', type: 'geo' },
+        { id: 'geo-jaws-parallelism', name: 'Jaws Parallelism', type: 'geo' },
+      ] as const;
+
+      // Fetch Beam Types to build dynamic beam list
+      let beamChecks: { id: string; name: string; type: 'beam' }[] = [];
+      try {
+        const types = await fetchBeamTypes();
+        if (types && types.length > 0) {
+          beamChecks = types.map(t => ({
+            id: `beam-${t}`,
+            name: `Beam Check (${t})`,
+            type: 'beam'
+          }));
+        } else {
+          // Fallback default
+          const defaults = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
+          beamChecks = defaults.map(t => ({ id: `beam-${t}`, name: `Beam Check (${t})`, type: 'beam' }));
+        }
+      } catch (e) {
+        console.error('Failed to fetch beam types for report:', e);
+        // Fallback default on error
+        const defaults = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
+        beamChecks = defaults.map(t => ({ id: `beam-${t}`, name: `Beam Check (${t})`, type: 'beam' }));
+      }
+
+      setAvailableReportChecks([...beamChecks, ...geoChecks]);
+      // Default select all
+      setReportSelectedChecks(new Set([...beamChecks, ...geoChecks].map(c => c.id)));
+    };
+
+    if (isReportModalOpen) {
+      loadChecks();
+    }
+  }, [isReportModalOpen]);
+
+  const toggleReportCheck = (checkId: string) => {
+    setReportSelectedChecks(prev => {
+      const next = new Set(prev);
+      if (next.has(checkId)) {
+        next.delete(checkId);
+      } else {
+        next.add(checkId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllReportChecks = (checked: boolean) => {
+    if (checked) {
+      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    } else {
+      setReportSelectedChecks(new Set());
+    }
+  };
+
+  const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
+  const handleSaveReport = () => {
+    // console.log('Generating report', { start: reportStartDate, end: reportEndDate, checks: Array.from(reportSelectedChecks) });
+    setIsReportModalOpen(false);
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -96,13 +196,7 @@ export default function MPCResultPage() {
   }, [selectedMachine, selectedMonth, selectedYear]);
 
   const handleGenerateReport = () => {
-    console.log('Generating report for:', {
-      machine: selectedMachine?.name,
-      month: selectedMonth + 1,
-      year: selectedYear,
-      resultsCount: monthlyResults?.checks.length ?? 0
-    });
-    // TODO: Implement actual report generation
+    setIsReportModalOpen(true);
   };
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -168,7 +262,7 @@ export default function MPCResultPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-background transition-colors">
         <Navbar user={user} />
         <main className="p-6">
           <div className="animate-pulse">
@@ -183,17 +277,17 @@ export default function MPCResultPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background transition-colors">
       <Navbar user={user} />
 
       <main className="p-6">
         {/* Header */}
         <div className="flex justify-between items-start mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            <h1 className="text-4xl font-bold text-foreground mb-4">
               {UI_CONSTANTS.TITLES.MPC_RESULTS}
             </h1>
-            <p className="text-gray-600 mb-6 max-w-2xl">
+            <p className="text-muted-foreground mb-6 max-w-2xl">
               {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
             </p>
           </div>
@@ -220,7 +314,7 @@ export default function MPCResultPage() {
         <div className="mb-8 space-y-6">
           {/* Machine Selection */}
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">{UI_CONSTANTS.LABELS.MACHINE}</label>
+            <label className="text-sm font-medium text-muted-foreground">{UI_CONSTANTS.LABELS.MACHINE}</label>
             <div className="relative">
               <Select
                 value={selectedMachine?.id || ''}
@@ -229,7 +323,7 @@ export default function MPCResultPage() {
                   setSelectedMachine(machine || null);
                 }}
               >
-                <SelectTrigger className="w-[200px] bg-purple-900 text-white border-purple-800">
+                <SelectTrigger className="w-[200px] bg-primary text-primary-foreground border-primary">
                   <SelectValue placeholder="Select Machine" />
                 </SelectTrigger>
                 <SelectContent>
@@ -246,13 +340,13 @@ export default function MPCResultPage() {
           {/* Month/Year Selection */}
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">Month</label>
+              <label className="text-sm font-medium text-muted-foreground">Month</label>
               <div className="relative">
                 <Select
                   value={selectedMonth.toString()}
                   onValueChange={(val) => setSelectedMonth(Number(val))}
                 >
-                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300">
+                  <SelectTrigger className="w-[140px] bg-white text-foreground border-gray-300">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -266,13 +360,13 @@ export default function MPCResultPage() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">Year</label>
+              <label className="text-sm font-medium text-muted-foreground">Year</label>
               <div className="relative">
                 <Select
                   value={selectedYear.toString()}
                   onValueChange={(val) => setSelectedYear(Number(val))}
                 >
-                  <SelectTrigger className="w-[120px] bg-white text-gray-900 border-gray-300">
+                  <SelectTrigger className="w-[120px] bg-white text-foreground border-gray-300">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -292,7 +386,7 @@ export default function MPCResultPage() {
         </div>
 
         {/* Calendar View */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="bg-card text-card-foreground border border-border rounded-lg p-6">
           {/* Month/Year Heading with Navigation */}
           <div className="flex justify-between items-center mb-6 px-4">
             <Button
@@ -307,11 +401,11 @@ export default function MPCResultPage() {
                 }
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
             </Button>
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-xl font-semibold text-foreground">
               {monthNames[selectedMonth]} {selectedYear}
             </h2>
             <Button
@@ -326,7 +420,7 @@ export default function MPCResultPage() {
                 }
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
             </Button>
@@ -356,11 +450,11 @@ export default function MPCResultPage() {
                   key={uniqueKey}
                   onClick={() => hasResults && handleDateClick(dayObj)}
                   className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${hasResults
-                    ? 'hover:bg-gray-50 cursor-pointer hover:border-purple-300'
+                    ? 'hover:bg-gray-50 cursor-pointer hover:border-primary'
                     : ''
                     }`}
                 >
-                  <div className="text-sm font-medium text-gray-900 mb-1">
+                  <div className="text-sm font-medium text-foreground mb-1">
                     {dayObj.day}
                   </div>
 
@@ -397,24 +491,24 @@ export default function MPCResultPage() {
         {/* Results Summary */}
         {selectedMachine && monthlyResults && (
           <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               {UI_CONSTANTS.TITLES.RESULTS_SUMMARY} {selectedMachine.name}
             </h3>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
+                <span className="text-muted-foreground">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
                 <span className="ml-2 font-medium">
                   {monthlyResults.checks.filter(c => c.beamCheckStatus || c.geometryCheckStatus).length}
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.GEOMETRY_CHECKS}</span>
+                <span className="text-muted-foreground">{UI_CONSTANTS.SUMMARY.GEOMETRY_CHECKS}</span>
                 <span className="ml-2 font-medium">
                   {monthlyResults.checks.filter((c: DayCheckStatus) => c.geometryCheckStatus).length}
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">{UI_CONSTANTS.SUMMARY.BEAM_CHECKS}</span>
+                <span className="text-muted-foreground">{UI_CONSTANTS.SUMMARY.BEAM_CHECKS}</span>
                 <span className="ml-2 font-medium">
                   {monthlyResults.checks.filter((c: DayCheckStatus) => c.beamCheckStatus).length}
                 </span>
@@ -423,6 +517,112 @@ export default function MPCResultPage() {
           </div>
         )}
       </main>
+
+      {/* Report Generation Modal */}
+      <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Generate Report</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Date Range Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <DatePicker
+                  date={reportStartDate}
+                  setDate={(d) => d && setReportStartDate(d)}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <DatePicker
+                  date={reportEndDate}
+                  setDate={(d) => d && setReportEndDate(d)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Check Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Select Checks</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all-checks"
+                    checked={isAllChecksSelected}
+                    onCheckedChange={(c) => toggleAllReportChecks(c as boolean)}
+                  />
+                  <label
+                    htmlFor="select-all-checks"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Select All
+                  </label>
+                </div>
+              </div>
+              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
+                {availableReportChecks.length > 0 ? (
+                  <>
+                    {/* Beam Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
+                      </div>
+                    </div>
+
+                    {/* Geometry Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 text-center">Loading checks...</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveReport}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { MdOpenInNew, MdInfo, MdWarning, MdCreate } from 'react-icons/md';
+import { ExternalLink, Info, TriangleAlert, SquarePen } from 'lucide-react';
 import { UI_CONSTANTS } from '../../constants';
 
 interface UpdateCardProps {
@@ -9,12 +9,12 @@ interface UpdateCardProps {
   onClick?: () => void;
 }
 
-const defaultIcon = MdInfo;
+const defaultIcon = Info;
 
-const iconMap: Record<string, typeof MdInfo> = {
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.INFO]: MdInfo,
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.SIGNOFF]: MdCreate,
-  [UI_CONSTANTS.UPDATE_ICON_TYPE.THRESHOLD]: MdWarning,
+const iconMap: Record<string, typeof Info> = {
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.INFO]: Info,
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.SIGNOFF]: SquarePen,
+  [UI_CONSTANTS.UPDATE_ICON_TYPE.THRESHOLD]: TriangleAlert,
 };
 
 const iconColorMap: Record<string, string> = {
@@ -37,7 +37,7 @@ export const UpdateCard = ({
 
   return (
     <div
-      className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer"
+      className="bg-card text-card-foreground border border-border rounded-lg p-4 hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
       onClick={onClick}
     >
       <div className="flex items-start space-x-4">
@@ -45,10 +45,10 @@ export const UpdateCard = ({
           <IconComponent className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1">
-          <h3 className="font-semibold text-gray-900 mb-1">{heading}</h3>
-          <p className="text-sm text-gray-600">{bodyCopy}</p>
+          <h3 className="font-semibold mb-1">{heading}</h3>
+          <p className="text-sm text-muted-foreground">{bodyCopy}</p>
         </div>
-        <MdOpenInNew className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
+        <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
       </div>
     </div>
   );

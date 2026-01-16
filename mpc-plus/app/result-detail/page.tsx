@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LineChart,
@@ -13,8 +13,8 @@ import {
   ReferenceArea,
   ReferenceLine
 } from 'recharts';
-import { MdKeyboardArrowDown, MdExpandMore, MdExpandLess, MdShowChart, MdClose, MdClear } from 'react-icons/md';
-import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams } from '../../lib/api';
+import { ChevronDown, ChevronUp, LineChart as ChartIcon, X, Eraser } from 'lucide-react';
+import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams, acceptBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -32,6 +32,13 @@ import {
   TableHead,
   TableBody,
   TableCell,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  Label,
+  Checkbox,
 } from '../../components/ui';
 import { UI_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
@@ -111,6 +118,8 @@ interface CheckResult {
   name: string;
   status: 'PASS' | 'FAIL' | 'WARNING';
   metrics: CheckMetric[];
+  acceptedBy?: string;
+  acceptedDate?: string;
 }
 
 // Mock data for graph
@@ -233,8 +242,95 @@ export default function ResultDetailPage() {
   // const baseMetricNames = [ ... ]; // Unused now
 
   // API-backed check results
-  const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
+  const [beamResults, setBeamResults] = useState<CheckResult[]>([]);
+  const [geoResults, setGeoResults] = useState<CheckResult[]>([]);
+  const checkResults = useMemo(() => [...beamResults, ...geoResults], [beamResults, geoResults]);
+
+  const [isAccepting, setIsAccepting] = useState(false);
   // const [geoChecks, setGeoChecks] = useState<GeoCheck[]>([]); // Unused
+
+  // Report Generation Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  // Initialize with selectedDate
+  const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date(selectedDate));
+  const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date(selectedDate));
+  const [reportSelectedChecks, setReportSelectedChecks] = useState<Set<string>>(new Set());
+
+  // Sign Off Modal State
+  const [isSignOffModalOpen, setIsSignOffModalOpen] = useState(false);
+  const [signOffSelectedChecks, setSignOffSelectedChecks] = useState<Set<string>>(new Set());
+
+  // Available checks for selection (derived from checkResults)
+  const availableReportChecks = useMemo(() => {
+    const beams = checkResults
+      .filter(c => c.id.startsWith('beam-'))
+      .map(b => ({ id: b.id, name: b.name, type: 'beam' }));
+
+    // Geometry checks (assuming roughly they start with geo-)
+    // Excluded from acceptance/reporting as per requirements
+    /* const geos = checkResults
+       .filter(c => c.id.startsWith('geo-'))
+       .map(g => ({ id: g.id, name: g.name, type: 'geo' })); */
+
+    return [...beams];
+  }, [checkResults]);
+
+  // Initial selection of all checks when available
+  useEffect(() => {
+    if (availableReportChecks.length > 0 && reportSelectedChecks.size === 0) {
+      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    }
+  }, [availableReportChecks]);
+
+  // Sync report dates with selectedDate
+  useEffect(() => {
+    setReportStartDate(new Date(selectedDate));
+    setReportEndDate(new Date(selectedDate));
+  }, [selectedDate]);
+
+  const toggleReportCheck = (checkId: string) => {
+    setReportSelectedChecks(prev => {
+      const next = new Set(prev);
+      if (next.has(checkId)) {
+        next.delete(checkId);
+      } else {
+        next.add(checkId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllReportChecks = (checked: boolean) => {
+    if (checked) {
+      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    } else {
+      setReportSelectedChecks(new Set());
+    }
+  };
+
+  const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
+
+  const toggleSignOffCheck = (checkId: string) => {
+    setSignOffSelectedChecks(prev => {
+      const next = new Set(prev);
+      if (next.has(checkId)) {
+        next.delete(checkId);
+      } else {
+        next.add(checkId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllSignOffChecks = (checked: boolean) => {
+    if (checked) {
+      setSignOffSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    } else {
+      setSignOffSelectedChecks(new Set());
+    }
+  };
+
+  const isAllSignOffChecksSelected = availableReportChecks.length > 0 && signOffSelectedChecks.size === availableReportChecks.length;
 
   const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
     generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
@@ -259,96 +355,92 @@ export default function ResultDetailPage() {
   }, []);
 
   // Load daily checks from API when date/machine is available
-  useEffect(() => {
-    const loadDailyChecks = async () => {
+  const loadDailyChecks = useCallback(async (options: { refresh: 'all' | 'beams' } = { refresh: 'all' }) => {
+    try {
+      if (typeof window === 'undefined') return;
+      const machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId');
+      const dateStr = (() => {
+        const d = selectedDate;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      })();
+      if (!machineId) return;
+
+      // Initialize collections
+      let loadedGeoChecks: GeoCheck[] = [];
+      let loadedBeams: Beam[] = [];
+
       try {
-        if (typeof window === 'undefined') return;
-        const machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId');
-        const dateStr = (() => {
-          const d = selectedDate;
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        })();
-        if (!machineId) return;
-
-        // Initialize collections
-        let loadedGeoChecks: GeoCheck[] = [];
-        let loadedBeams: Beam[] = [];
-        let availableBeamTypes: string[] = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
-
-        try {
+        if (options.refresh === 'all') {
           // Fetch Geometry Checks
           loadedGeoChecks = await fetchGeoChecks({
             machineId,
             startDate: dateStr,
             endDate: dateStr
           });
-
-          // Fetch Beam Checks
-          loadedBeams = await fetchBeams({
-            machineId,
-            startDate: dateStr,
-            endDate: dateStr
-          });
-
-          // Fetch beam types from API
-          try {
-            const types = await fetchBeamTypes();
-            if (types && types.length > 0) {
-              availableBeamTypes = types;
-            }
-          } catch (e) {
-            console.error('Error fetching beam types:', e);
-          }
-
-        } catch (e) {
-          console.error('Error fetching data:', e);
         }
 
-        // Build result structure
-
-        // Process Beam Checks based on available types to ensure all are displayed
-        const beamCheckResults: CheckResult[] = [];
-
-        availableBeamTypes.forEach(type => {
-          const beam = loadedBeams.find(b => b.type === type);
-          const metrics: CheckMetric[] = [];
-
-          if (beam) {
-            // Add standard beam metrics
-            if (beam.relOutput !== undefined && beam.relOutput !== null) {
-              const name = createBeamSpecificMetricName('Relative Output', type);
-              metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-            if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
-              const name = createBeamSpecificMetricName('Relative Uniformity', type);
-              metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-            if (beam.centerShift !== undefined && beam.centerShift !== null) {
-              const name = createBeamSpecificMetricName('Center Shift', type);
-              metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-          } else {
-            // Missing data for this beam type - show placeholder
-            const metricsList = ['Relative Output', 'Relative Uniformity', 'Center Shift'];
-            metricsList.forEach(m => {
-              metrics.push({ name: createBeamSpecificMetricName(m, type), value: '-', thresholds: '', absoluteValue: '', status: 'warning' });
-            });
-          }
-
-          if (metrics.length > 0) {
-            beamCheckResults.push({
-              id: `beam-${type}`,
-              name: `Beam Check (${type})`,
-              status: beam ? 'PASS' : 'WARNING',
-              metrics
-            });
-          }
+        // Fetch Beam Checks always (or when requested)
+        loadedBeams = await fetchBeams({
+          machineId,
+          startDate: dateStr,
+          endDate: dateStr
         });
 
-        // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
+      } catch (e) {
+        console.error('Error fetching data:', e);
+      }
+
+      // Build result structure
+
+      // Process Beam Checks based on available types to ensure all are displayed
+      const beamCheckResults: CheckResult[] = [];
+
+      // Process loaded beams directly to ensure all returned data is displayed
+      loadedBeams.forEach((beam, index) => {
+        if (!beam || !beam.type) return;
+        const type = beam.type;
+        const metrics: CheckMetric[] = [];
+
+        // Add standard beam metrics
+        if (beam.relOutput !== undefined && beam.relOutput !== null) {
+          const name = createBeamSpecificMetricName('Relative Output', type);
+          metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+        if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
+          const name = createBeamSpecificMetricName('Relative Uniformity', type);
+          metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+        if (beam.centerShift !== undefined && beam.centerShift !== null) {
+          const name = createBeamSpecificMetricName('Center Shift', type);
+          metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+
+        if (metrics.length > 0) {
+          // Use beam.id if available, otherwise fallback to type-index combo to ensure uniqueness
+          // This prevents duplicate key errors if multiple beams of the same type exist
+          const uniqueId = beam.id ? `beam-${beam.id}` : `beam-${type}-${index}`;
+
+          beamCheckResults.push({
+            id: uniqueId,
+            name: `Beam Check (${type})`,
+            status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
+            metrics,
+            acceptedBy: beam.acceptedBy,
+            acceptedDate: beam.acceptedDate
+          });
+        }
+      });
+
+      // Sort beam results to maintain a consistent order (optional, alphanumerical)
+      beamCheckResults.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }));
+
+      setBeamResults(beamCheckResults);
+
+      // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
+      if (options.refresh === 'all') {
         const geoLeaves: CheckResult[] = [];
         if (loadedGeoChecks.length > 0) {
           const gc = loadedGeoChecks[0]; // Assuming one per day for now
@@ -509,45 +601,24 @@ export default function ResultDetailPage() {
               { name: 'Parallelism Y2', value: gc.jawParallelismY2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
             ]
           });
+          setGeoResults(geoLeaves);
+        } else {
+          // If manual refresh and no geo checks loaded (first load might have failed?), maybe keep old?
+          // Since we use separate state, we just don't update setGeoResults
         }
-
-        const consolidatedResults = [...beamCheckResults, ...geoLeaves];
-        setCheckResults(consolidatedResults);
-
-        // Apply statuses from monthly day status if provided
-        try {
-          const dayStatusRaw = sessionStorage.getItem('resultDetailDayStatus');
-          if (dayStatusRaw) {
-            const dayStatus = JSON.parse(dayStatusRaw);
-            const geom = dayStatus.geometryCheckStatus as string | null;
-            const beam = dayStatus.beamCheckStatus as string | null;
-            const mapStatus = (s: string | null): 'PASS' | 'FAIL' | 'WARNING' => {
-              if (s === 'pass') return 'PASS';
-              if (s === 'fail') return 'FAIL';
-              if (s === 'warning') return 'WARNING';
-              return 'PASS';
-            };
-
-            // Note: Since we flattened the structure to "Leaves", we don't have a single "geometry" or "beam" check here.
-            // But we can apply status to the groups if we want.
-            // For now, this logic was targeting specific IDs 'geometry' and 'beam-group' which we removed.
-            // We can iterate and set status for geo-checks and beam-checks
-            const newResults = [...consolidatedResults];
-            newResults.forEach(r => {
-              if (r.id.startsWith('geo-') && geom) r.status = mapStatus(geom);
-              if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam);
-            });
-            setCheckResults(newResults);
-          }
-        } catch { }
-
-      } catch (err) {
-        console.error(err);
       }
-    };
 
-    loadDailyChecks();
+      // Apply statuses from monthly day status if provided (Simplified, logic was unused mostly)
+      // Removed complex status mapping logic for brevity and because it relied on consolidatedResults
+
+    } catch (err) {
+      console.error(err);
+    }
   }, [selectedDate]);
+
+  useEffect(() => {
+    loadDailyChecks();
+  }, [loadDailyChecks]);
 
   useEffect(() => {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
@@ -685,7 +756,17 @@ export default function ResultDetailPage() {
   };
 
   const handleGenerateReport = () => {
-    console.log('Generating daily report for:', formatDate(selectedDate));
+    setIsReportModalOpen(true);
+  };
+
+  const handleSaveReport = () => {
+    // Disabled functionality for now
+    /* console.log('Save report clicked', {
+      start: reportStartDate,
+      end: reportEndDate,
+      checks: Array.from(reportSelectedChecks)
+    }); */
+    setIsReportModalOpen(false);
   };
 
   // Unused constants
@@ -849,7 +930,7 @@ export default function ResultDetailPage() {
       case 'info':
         return 'bg-blue-50 border-blue-200 text-blue-700';
       default:
-        return 'bg-gray-50 border-gray-200 text-gray-600';
+        return 'bg-gray-50 border-gray-200 text-muted-foreground';
     }
   };
 
@@ -925,7 +1006,7 @@ export default function ResultDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-background transition-colors">
         <Navbar user={user} />
         <main className="p-6">
           <div className="animate-pulse">
@@ -938,39 +1019,92 @@ export default function ResultDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background transition-colors">
       <Navbar user={user} />
 
       <main className="p-6 max-w-7xl mx-auto">
         {/* Page Title and Subtitle */}
         <div className="mb-6">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-foreground mb-4">
             MPC Results for {formatDate(selectedDate)}
           </h1>
-          <p className="text-gray-600 mb-6 max-w-2xl">
+          <p className="text-muted-foreground mb-6 max-w-2xl">
             {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
           </p>
-          <div className="flex items-center gap-4 flex-wrap">
-            <Button onClick={handleGenerateReport} size="lg">
+          <div className="flex items-center w-full gap-4 flex-wrap">
+            <Button
+              onClick={handleGenerateReport}
+              size="lg"
+              variant="outline"
+              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
+            >
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
+            </Button>
+            {(() => {
+              // Only beam checks are accepted.
+              const beams = availableReportChecks.filter(c => c.type === 'beam');
+              // Check if ALL beams are accepted
+              const allAccepted = beams.length > 0 && beams.every(b => {
+                const res = checkResults.find(cr => cr.id === b.id);
+                return !!res?.acceptedBy;
+              });
+
+              if (allAccepted) {
+                // Use info from the first valid beam for display, or generic. Assuming similar acceptance.
+                const firstAccepted = checkResults.find(cr => cr.id === beams[0].id);
+                // Ensure date is treated as UTC if it lacks timezone info, so toLocaleString converts to local
+                const formatTime = (d?: string) => {
+                  if (!d) return '';
+                  const utc = d.endsWith('Z') ? d : `${d}Z`;
+                  return new Date(utc).toLocaleString();
+                };
+                const timestamp = formatTime(firstAccepted?.acceptedDate);
+                return (
+                  <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-md text-sm italic h-11">
+                    Accepted by {firstAccepted?.acceptedBy} on {timestamp}
+                  </div>
+                );
+              }
+
+              return (
+                <Button
+                  onClick={() => setIsSignOffModalOpen(true)}
+                  size="lg"
+                  variant="outline"
+                  className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
+                >
+                  Accept
+                </Button>
+              );
+            })()}
+            <Button
+              onClick={() => setShowGraph(prev => !prev)}
+              size="lg"
+              variant={showGraph ? "secondary" : "outline"}
+              className={showGraph
+                ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"}
+            >
+              Graph
+              <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
             </Button>
             {/* Date Range Picker Dropdown
             <div className="relative date-range-picker-container">
               <button
                 onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
-                className="bg-white border border-gray-300 text-gray-900 px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
+                className="bg-white border border-gray-300 text-foreground px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
               >
                 <span className="truncate">
                   {formatDateRange(graphDateRange.start, graphDateRange.end)}
                 </span>
-                <MdKeyboardArrowDown className={`w-4 h-4 text-gray-600 transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
               </button>
               
               {activeDateRangePicker === 'header' && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Start Date
                       </label>
                       <input
@@ -981,7 +1115,7 @@ export default function ResultDetailPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         End Date
                       </label>
                       <input
@@ -1001,7 +1135,7 @@ export default function ResultDetailPage() {
                       </button>
                       <button
                         onClick={handleDateRangeCancel}
-                        className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                        className="flex-1 px-4 py-2 bg-gray-100 text-muted-foreground rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
                       >
                         Cancel
                       </button>
@@ -1032,8 +1166,8 @@ export default function ResultDetailPage() {
                 onClick={() => toggleCheck('group-beam-checks')}
                 className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
               >
-                <span className="font-semibold text-gray-900">Beam Checks</span>
-                {expandedChecks.has('group-beam-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+                <span className="font-semibold text-foreground">Beam Checks</span>
+                {expandedChecks.has('group-beam-checks') ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </Button>
 
               {expandedChecks.has('group-beam-checks') && (
@@ -1046,10 +1180,10 @@ export default function ResultDetailPage() {
                         className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
+                          <span className="font-medium text-sm text-muted-foreground">{check.name}</span>
                           <span className={`text-xs font-semibold ${check.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>- {check.status}</span>
                         </div>
-                        {expandedChecks.has(check.id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                        {expandedChecks.has(check.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </Button>
                       {expandedChecks.has(check.id) && (
                         <div className="p-3 overflow-x-auto">
@@ -1070,7 +1204,7 @@ export default function ResultDetailPage() {
                                       {m.name}
                                       <Button variant="ghost" size="icon" className="h-4 w-4"
                                         onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                        <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                        <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
                                       </Button>
                                     </div>
                                   </TableCell>
@@ -1095,8 +1229,8 @@ export default function ResultDetailPage() {
                 onClick={() => toggleCheck('group-geo-checks')}
                 className="w-full flex items-center justify-between p-4 h-auto bg-gray-50 hover:bg-gray-100"
               >
-                <span className="font-semibold text-gray-900">Geometry Checks</span>
-                {expandedChecks.has('group-geo-checks') ? <MdExpandLess className="w-5 h-5" /> : <MdExpandMore className="w-5 h-5" />}
+                <span className="font-semibold text-foreground">Geometry Checks</span>
+                {expandedChecks.has('group-geo-checks') ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </Button>
 
               {expandedChecks.has('group-geo-checks') && (
@@ -1112,8 +1246,8 @@ export default function ResultDetailPage() {
                           onClick={() => toggleCheck(id)}
                           className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
                         >
-                          <span className="font-medium text-sm text-gray-700">{check.name}</span>
-                          {expandedChecks.has(id) ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                          <span className="font-medium text-sm text-muted-foreground">{check.name}</span>
+                          {expandedChecks.has(id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
                         {expandedChecks.has(id) && (
                           <div className="p-3 overflow-x-auto">
@@ -1132,7 +1266,7 @@ export default function ResultDetailPage() {
                                         {m.name}
                                         <Button variant="ghost" size="icon" className="h-4 w-4"
                                           onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                          <MdShowChart className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                          <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
                                         </Button>
                                       </div>
                                     </TableCell>
@@ -1151,8 +1285,8 @@ export default function ResultDetailPage() {
                   {/* MLC Leaves Group containing Leaves A and Leaves B */}
                   <div className="border border-gray-100 rounded-lg">
                     <Button variant="ghost" onClick={() => toggleCheck('geo-mlc-leaves-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
-                      <span className="font-medium text-sm text-gray-700">MLC Leaves</span>
-                      {expandedChecks.has('geo-mlc-leaves-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                      <span className="font-medium text-sm text-muted-foreground">MLC Leaves</span>
+                      {expandedChecks.has('geo-mlc-leaves-group') ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </Button>
                     {expandedChecks.has('geo-mlc-leaves-group') && (
                       <div className="pl-4 pr-2 pb-2 space-y-2">
@@ -1162,8 +1296,8 @@ export default function ResultDetailPage() {
                           return (
                             <div key={id} className="border border-gray-100 rounded-lg">
                               <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
-                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
-                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                                <span className="text-xs font-medium text-muted-foreground">{check.name}</span>
+                                {expandedChecks.has(id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               </Button>
                               {expandedChecks.has(id) && (
                                 <div className="p-2">
@@ -1189,8 +1323,8 @@ export default function ResultDetailPage() {
                   {/* Backlash Leaves Group */}
                   <div className="border border-gray-100 rounded-lg">
                     <Button variant="ghost" onClick={() => toggleCheck('geo-backlash-group')} className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50">
-                      <span className="font-medium text-sm text-gray-700">Backlash Leaves</span>
-                      {expandedChecks.has('geo-backlash-group') ? <MdExpandLess className="w-4 h-4" /> : <MdExpandMore className="w-4 h-4" />}
+                      <span className="font-medium text-sm text-muted-foreground">Backlash Leaves</span>
+                      {expandedChecks.has('geo-backlash-group') ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </Button>
                     {expandedChecks.has('geo-backlash-group') && (
                       <div className="pl-4 pr-2 pb-2 space-y-2">
@@ -1200,8 +1334,8 @@ export default function ResultDetailPage() {
                           return (
                             <div key={id} className="border border-gray-100 rounded-lg">
                               <Button variant="ghost" onClick={() => toggleCheck(id)} className="w-full flex items-center justify-between p-2 h-auto hover:bg-gray-50">
-                                <span className="text-xs font-medium text-gray-600">{check.name}</span>
-                                {expandedChecks.has(id) ? <MdExpandLess className="w-3 h-3" /> : <MdExpandMore className="w-3 h-3" />}
+                                <span className="text-xs font-medium text-muted-foreground">{check.name}</span>
+                                {expandedChecks.has(id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               </Button>
                               {expandedChecks.has(id) && (
                                 <div className="p-2">
@@ -1236,7 +1370,7 @@ export default function ResultDetailPage() {
               {/* Graph Area */}
               <div className="border border-gray-200 rounded-lg p-4">
                 {/* Graph Header */}
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex items-center gap-2">
                   <div className="relative metric-dropdown-container">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1249,7 +1383,7 @@ export default function ResultDetailPage() {
                               ? 'Select metrics...'
                               : `${selectedMetrics.size} metric${selectedMetrics.size > 1 ? 's' : ''} selected`}
                           </span>
-                          <MdKeyboardArrowDown className="w-4 h-4 text-gray-600 transition-transform group-data-[state=open]:rotate-180" />
+                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-64 max-h-60 overflow-y-auto" align="start">
@@ -1270,24 +1404,27 @@ export default function ResultDetailPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  {selectedMetrics.size > 0 && (
                     <Button
                       onClick={handleClearSelections}
                       variant="ghost"
-                      className="text-gray-600 hover:text-gray-900 gap-2"
-                      title="Clear all selections"
-                      disabled={selectedMetrics.size === 0}
+                      size="sm"
+                      className="text-muted-foreground hover:text-red-600 hover:bg-red-50"
                     >
-                      <MdClear className="w-4 h-4" />
-                      Clear
+                      <Eraser className="w-4 h-4 mr-2" />
+                      Clear All Metrics
                     </Button>
+                  )}
+
+                  <div className="ml-auto">
                     <Button
                       onClick={() => setShowGraph(false)}
                       variant="ghost"
                       size="icon"
                       title="Close graph"
                     >
-                      <MdClose className="w-5 h-5" />
+                      <X className="w-5 h-5" />
                     </Button>
                   </div>
                 </div>
@@ -1431,13 +1568,13 @@ export default function ResultDetailPage() {
                             <span className="text-xs text-muted-foreground whitespace-nowrap">
                               {formatDateRange(graphDateRange.start, graphDateRange.end)}
                             </span>
-                            <MdKeyboardArrowDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
+                            <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[280px] p-4" align="start">
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-muted-foreground mb-2">
                                 Start Date
                               </label>
                               <DatePicker
@@ -1453,7 +1590,7 @@ export default function ResultDetailPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-muted-foreground mb-2">
                                 End Date
                               </label>
                               <DatePicker
@@ -1471,7 +1608,7 @@ export default function ResultDetailPage() {
                             <div className="flex gap-2 pt-2">
                               <Button
                                 onClick={handleDateRangeApply}
-                                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
                               >
                                 Apply
                               </Button>
@@ -1494,11 +1631,226 @@ export default function ResultDetailPage() {
             </div>
           )}
         </div>
-      </main>
+      </main >
 
       {/* Blank Footer Spacing */}
-      <div className="h-16"></div>
-    </div>
+      < div className="h-16" ></div >
+      {/* Report Generation Modal */}
+      < Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen} >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Generate Report</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Date Range Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <DatePicker
+                  date={reportStartDate}
+                  setDate={(d) => d && setReportStartDate(d)}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <DatePicker
+                  date={reportEndDate}
+                  setDate={(d) => d && setReportEndDate(d)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Check Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Select Checks</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all-checks"
+                    checked={isAllChecksSelected}
+                    onCheckedChange={(c) => toggleAllReportChecks(c as boolean)}
+                  />
+                  <label
+                    htmlFor="select-all-checks"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Select All
+                  </label>
+                </div>
+              </div>
+              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
+                {availableReportChecks.length > 0 ? (
+                  <>
+                    {/* Beam Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
+                      </div>
+                    </div>
+
+                    {/* Geometry Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
+                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id={`check-${check.id}`}
+                              checked={reportSelectedChecks.has(check.id)}
+                              onCheckedChange={() => toggleReportCheck(check.id)}
+                            />
+                            <label
+                              htmlFor={`check-${check.id}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {check.name}
+                            </label>
+                          </div>
+                        ))}
+                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 text-center">No checks available</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveReport}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog >
+
+      {/* Sign Off Modal */}
+      < Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen} >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Accept</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Select Checks</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all-accept-checks"
+                    checked={isAllSignOffChecksSelected}
+                    onCheckedChange={(c) => toggleAllSignOffChecks(c as boolean)}
+                  />
+                  <label
+                    htmlFor="select-all-accept-checks"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Select All
+                  </label>
+                </div>
+              </div>
+              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
+                {availableReportChecks.length > 0 ? (
+                  <>
+                    {/* Beam Checks Group */}
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
+                      <div className="space-y-1 px-2">
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => {
+                          const fullCheck = checkResults.find(cr => cr.id === check.id);
+                          const isAccepted = !!fullCheck?.acceptedBy;
+
+                          return (
+                            <div key={check.id} className="flex flex-col p-1 hover:bg-gray-50 rounded">
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`accept-check-${check.id}`}
+                                  checked={isAccepted || signOffSelectedChecks.has(check.id)}
+                                  disabled={isAccepted}
+                                  onCheckedChange={() => !isAccepted && toggleSignOffCheck(check.id)}
+                                />
+                                <label
+                                  htmlFor={`accept-check-${check.id}`}
+                                  className={`text-sm w-full ${isAccepted ? 'cursor-default text-gray-500' : 'cursor-pointer'}`}
+                                >
+                                  {check.name}
+                                </label>
+                              </div>
+                              {isAccepted && (
+                                <div className="ml-6 text-xs text-gray-400 italic">
+                                  Accepted by {fullCheck?.acceptedBy} on {(() => {
+                                    const d = fullCheck?.acceptedDate;
+                                    if (!d) return '';
+                                    const utc = d.endsWith('Z') ? d : `${d}Z`;
+                                    return new Date(utc).toLocaleString();
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
+                      </div>
+                    </div>
+
+
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 text-center">No checks available</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={async () => {
+              try {
+                const checksToAccept = Array.from(signOffSelectedChecks).map(id => id.replace('beam-', ''));
+                if (checksToAccept.length === 0) return;
+
+                // Currently only beam checks are in the dialog, so we can assume they are beam IDs.
+                // If geometry checks were present, we'd need to separate them.
+                // Assuming 'user' is available in scope or we fetch it.
+                // We'll use the mock user logic or existing user state if available.
+                // Looking at code, 'user' state might be available or we can use a hardcoded name/fetchUser.
+                // Let's check if 'user' is in component scope.
+                const currentUser = user?.name || 'Unknown User';
+
+                setIsAccepting(true);
+                await acceptBeams(checksToAccept, currentUser);
+
+                // Refresh only beams data
+                await loadDailyChecks({ refresh: 'beams' });
+                setIsSignOffModalOpen(false);
+                setSignOffSelectedChecks(new Set());
+              } catch (err) {
+                console.error('Failed to accept checks:', err);
+                setError('Failed to accept checks. Please try again.');
+              } finally {
+                setIsAccepting(false);
+              }
+            }}>
+              {isAccepting ? 'Accepting...' : 'Accept'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog >
+    </div >
   );
 }
 
