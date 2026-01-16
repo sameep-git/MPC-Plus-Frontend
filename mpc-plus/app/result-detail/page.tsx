@@ -13,7 +13,7 @@ import {
   ReferenceArea,
   ReferenceLine
 } from 'recharts';
-import { ChevronDown, ChevronUp, LineChart as ChartIcon, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, LineChart as ChartIcon, X, Eraser } from 'lucide-react';
 import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams } from '../../lib/api';
 import {
   Navbar,
@@ -1360,7 +1360,7 @@ export default function ResultDetailPage() {
               {/* Graph Area */}
               <div className="border border-gray-200 rounded-lg p-4">
                 {/* Graph Header */}
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex items-center gap-2">
                   <div className="relative metric-dropdown-container">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1394,17 +1394,20 @@ export default function ResultDetailPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  {selectedMetrics.size > 0 && (
                     <Button
                       onClick={handleClearSelections}
                       variant="ghost"
-                      className="text-muted-foreground hover:text-foreground gap-2"
-                      title="Clear all selections"
-                      disabled={selectedMetrics.size === 0}
+                      size="sm"
+                      className="text-muted-foreground hover:text-red-600 hover:bg-red-50"
                     >
-                      <X className="w-4 h-4" />
-                      Clear
+                      <Eraser className="w-4 h-4 mr-2" />
+                      Clear All Metrics
                     </Button>
+                  )}
+
+                  <div className="ml-auto">
                     <Button
                       onClick={() => setShowGraph(false)}
                       variant="ghost"
@@ -1618,12 +1621,12 @@ export default function ResultDetailPage() {
             </div>
           )}
         </div>
-      </main>
+      </main >
 
       {/* Blank Footer Spacing */}
-      <div className="h-16"></div>
+      < div className="h-16" ></div >
       {/* Report Generation Modal */}
-      <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
+      < Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen} >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Generate Report</DialogTitle>
@@ -1726,10 +1729,10 @@ export default function ResultDetailPage() {
             <Button onClick={handleSaveReport}>Save</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
       {/* Sign Off Modal */}
-      <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>
+      < Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen} >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Sign Off</DialogTitle>
@@ -1814,8 +1817,8 @@ export default function ResultDetailPage() {
             }}>Sign Off</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
-    </div>
+      </Dialog >
+    </div >
   );
 }
 
