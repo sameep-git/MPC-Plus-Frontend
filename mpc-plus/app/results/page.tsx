@@ -323,7 +323,7 @@ export default function MPCResultPage() {
                   setSelectedMachine(machine || null);
                 }}
               >
-                <SelectTrigger className="w-[200px] bg-purple-900 text-white border-purple-800">
+                <SelectTrigger className="w-[200px] bg-primary text-primary-foreground border-primary">
                   <SelectValue placeholder="Select Machine" />
                 </SelectTrigger>
                 <SelectContent>
@@ -450,7 +450,7 @@ export default function MPCResultPage() {
                   key={uniqueKey}
                   onClick={() => hasResults && handleDateClick(dayObj)}
                   className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${hasResults
-                    ? 'hover:bg-gray-50 cursor-pointer hover:border-purple-300'
+                    ? 'hover:bg-gray-50 cursor-pointer hover:border-primary'
                     : ''
                     }`}
                 >

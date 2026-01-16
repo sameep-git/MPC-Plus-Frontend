@@ -1054,7 +1054,7 @@ export default function ResultDetailPage() {
               onClick={handleGenerateReport}
               size="lg"
               variant="outline"
-              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
+              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
             >
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
             </Button>
@@ -1062,7 +1062,7 @@ export default function ResultDetailPage() {
               onClick={() => setIsSignOffModalOpen(true)}
               size="lg"
               variant="outline"
-              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"
+              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
             >
               Sign Off
             </Button>
@@ -1071,11 +1071,11 @@ export default function ResultDetailPage() {
               size="lg"
               variant={showGraph ? "secondary" : "outline"}
               className={showGraph
-                ? "bg-purple-100 text-purple-900 border-purple-200 hover:bg-purple-200"
-                : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-purple-600 hover:border-purple-200"}
+                ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"}
             >
               Graph
-              <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-purple-700' : 'text-gray-500 group-hover:text-purple-600'}`} />
+              <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
             </Button>
             {/* Date Range Picker Dropdown
             <div className="relative date-range-picker-container">
@@ -1193,7 +1193,7 @@ export default function ResultDetailPage() {
                                       {m.name}
                                       <Button variant="ghost" size="icon" className="h-4 w-4"
                                         onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                        <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                        <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
                                       </Button>
                                     </div>
                                   </TableCell>
@@ -1255,7 +1255,7 @@ export default function ResultDetailPage() {
                                         {m.name}
                                         <Button variant="ghost" size="icon" className="h-4 w-4"
                                           onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
-                                          <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-purple-600' : 'text-gray-400'}`} />
+                                          <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
                                         </Button>
                                       </div>
                                     </TableCell>
@@ -1594,7 +1594,7 @@ export default function ResultDetailPage() {
                             <div className="flex gap-2 pt-2">
                               <Button
                                 onClick={handleDateRangeApply}
-                                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
                               >
                                 Apply
                               </Button>
