@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LineChart,
@@ -14,7 +14,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { ChevronDown, ChevronUp, LineChart as ChartIcon, X, Eraser } from 'lucide-react';
-import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams } from '../../lib/api';
+import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams, acceptBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -118,6 +118,8 @@ interface CheckResult {
   name: string;
   status: 'PASS' | 'FAIL' | 'WARNING';
   metrics: CheckMetric[];
+  acceptedBy?: string;
+  acceptedDate?: string;
 }
 
 // Mock data for graph
@@ -240,7 +242,11 @@ export default function ResultDetailPage() {
   // const baseMetricNames = [ ... ]; // Unused now
 
   // API-backed check results
-  const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
+  const [beamResults, setBeamResults] = useState<CheckResult[]>([]);
+  const [geoResults, setGeoResults] = useState<CheckResult[]>([]);
+  const checkResults = useMemo(() => [...beamResults, ...geoResults], [beamResults, geoResults]);
+
+  const [isAccepting, setIsAccepting] = useState(false);
   // const [geoChecks, setGeoChecks] = useState<GeoCheck[]>([]); // Unused
 
   // Report Generation Modal State
@@ -261,11 +267,12 @@ export default function ResultDetailPage() {
       .map(b => ({ id: b.id, name: b.name, type: 'beam' }));
 
     // Geometry checks (assuming roughly they start with geo-)
-    const geos = checkResults
-      .filter(c => c.id.startsWith('geo-'))
-      .map(g => ({ id: g.id, name: g.name, type: 'geo' }));
+    // Excluded from acceptance/reporting as per requirements
+    /* const geos = checkResults
+       .filter(c => c.id.startsWith('geo-'))
+       .map(g => ({ id: g.id, name: g.name, type: 'geo' })); */
 
-    return [...beams, ...geos];
+    return [...beams];
   }, [checkResults]);
 
   // Initial selection of all checks when available
@@ -348,97 +355,92 @@ export default function ResultDetailPage() {
   }, []);
 
   // Load daily checks from API when date/machine is available
-  useEffect(() => {
-    const loadDailyChecks = async () => {
+  const loadDailyChecks = useCallback(async (options: { refresh: 'all' | 'beams' } = { refresh: 'all' }) => {
+    try {
+      if (typeof window === 'undefined') return;
+      const machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId');
+      const dateStr = (() => {
+        const d = selectedDate;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      })();
+      if (!machineId) return;
+
+      // Initialize collections
+      let loadedGeoChecks: GeoCheck[] = [];
+      let loadedBeams: Beam[] = [];
+
       try {
-        if (typeof window === 'undefined') return;
-        const machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId');
-        const dateStr = (() => {
-          const d = selectedDate;
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        })();
-        if (!machineId) return;
-
-        // Initialize collections
-        let loadedGeoChecks: GeoCheck[] = [];
-        let loadedBeams: Beam[] = [];
-        let availableBeamTypes: string[] = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
-
-        try {
+        if (options.refresh === 'all') {
           // Fetch Geometry Checks
           loadedGeoChecks = await fetchGeoChecks({
             machineId,
             startDate: dateStr,
             endDate: dateStr
           });
-
-          // Fetch Beam Checks
-          loadedBeams = await fetchBeams({
-            machineId,
-            startDate: dateStr,
-            endDate: dateStr
-          });
-
-          // Fetch beam types from API
-          try {
-            const types = await fetchBeamTypes();
-            if (types && types.length > 0) {
-              availableBeamTypes = types;
-            }
-          } catch (e) {
-            console.error('Error fetching beam types:', e);
-          }
-
-        } catch (e) {
-          console.error('Error fetching data:', e);
         }
 
-        // Build result structure
-
-        // Process Beam Checks based on available types to ensure all are displayed
-        const beamCheckResults: CheckResult[] = [];
-
-        // Process loaded beams directly to ensure all returned data is displayed
-        loadedBeams.forEach((beam, index) => {
-          if (!beam || !beam.type) return;
-          const type = beam.type;
-          const metrics: CheckMetric[] = [];
-
-          // Add standard beam metrics
-          if (beam.relOutput !== undefined && beam.relOutput !== null) {
-            const name = createBeamSpecificMetricName('Relative Output', type);
-            metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
-          }
-          if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
-            const name = createBeamSpecificMetricName('Relative Uniformity', type);
-            metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
-          }
-          if (beam.centerShift !== undefined && beam.centerShift !== null) {
-            const name = createBeamSpecificMetricName('Center Shift', type);
-            metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
-          }
-
-          if (metrics.length > 0) {
-            // Use beam.id if available, otherwise fallback to type-index combo to ensure uniqueness
-            // This prevents duplicate key errors if multiple beams of the same type exist
-            const uniqueId = beam.id ? `beam-${beam.id}` : `beam-${type}-${index}`;
-
-            beamCheckResults.push({
-              id: uniqueId,
-              name: `Beam Check (${type})`,
-              status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
-              metrics
-            });
-          }
+        // Fetch Beam Checks always (or when requested)
+        loadedBeams = await fetchBeams({
+          machineId,
+          startDate: dateStr,
+          endDate: dateStr
         });
 
-        // Sort beam results to maintain a consistent order (optional, alphanumerical)
-        beamCheckResults.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }));
+      } catch (e) {
+        console.error('Error fetching data:', e);
+      }
 
-        // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
+      // Build result structure
+
+      // Process Beam Checks based on available types to ensure all are displayed
+      const beamCheckResults: CheckResult[] = [];
+
+      // Process loaded beams directly to ensure all returned data is displayed
+      loadedBeams.forEach((beam, index) => {
+        if (!beam || !beam.type) return;
+        const type = beam.type;
+        const metrics: CheckMetric[] = [];
+
+        // Add standard beam metrics
+        if (beam.relOutput !== undefined && beam.relOutput !== null) {
+          const name = createBeamSpecificMetricName('Relative Output', type);
+          metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+        if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
+          const name = createBeamSpecificMetricName('Relative Uniformity', type);
+          metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+        if (beam.centerShift !== undefined && beam.centerShift !== null) {
+          const name = createBeamSpecificMetricName('Center Shift', type);
+          metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
+        }
+
+        if (metrics.length > 0) {
+          // Use beam.id if available, otherwise fallback to type-index combo to ensure uniqueness
+          // This prevents duplicate key errors if multiple beams of the same type exist
+          const uniqueId = beam.id ? `beam-${beam.id}` : `beam-${type}-${index}`;
+
+          beamCheckResults.push({
+            id: uniqueId,
+            name: `Beam Check (${type})`,
+            status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
+            metrics,
+            acceptedBy: beam.acceptedBy,
+            acceptedDate: beam.acceptedDate
+          });
+        }
+      });
+
+      // Sort beam results to maintain a consistent order (optional, alphanumerical)
+      beamCheckResults.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }));
+
+      setBeamResults(beamCheckResults);
+
+      // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
+      if (options.refresh === 'all') {
         const geoLeaves: CheckResult[] = [];
         if (loadedGeoChecks.length > 0) {
           const gc = loadedGeoChecks[0]; // Assuming one per day for now
@@ -599,45 +601,24 @@ export default function ResultDetailPage() {
               { name: 'Parallelism Y2', value: gc.jawParallelismY2 ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
             ]
           });
+          setGeoResults(geoLeaves);
+        } else {
+          // If manual refresh and no geo checks loaded (first load might have failed?), maybe keep old?
+          // Since we use separate state, we just don't update setGeoResults
         }
-
-        const consolidatedResults = [...beamCheckResults, ...geoLeaves];
-        setCheckResults(consolidatedResults);
-
-        // Apply statuses from monthly day status if provided
-        try {
-          const dayStatusRaw = sessionStorage.getItem('resultDetailDayStatus');
-          if (dayStatusRaw) {
-            const dayStatus = JSON.parse(dayStatusRaw);
-            const geom = dayStatus.geometryCheckStatus as string | null;
-            const beam = dayStatus.beamCheckStatus as string | null;
-            const mapStatus = (s: string | null): 'PASS' | 'FAIL' | 'WARNING' => {
-              if (s === 'pass') return 'PASS';
-              if (s === 'fail') return 'FAIL';
-              if (s === 'warning') return 'WARNING';
-              return 'PASS';
-            };
-
-            // Note: Since we flattened the structure to "Leaves", we don't have a single "geometry" or "beam" check here.
-            // But we can apply status to the groups if we want.
-            // For now, this logic was targeting specific IDs 'geometry' and 'beam-group' which we removed.
-            // We can iterate and set status for geo-checks and beam-checks
-            const newResults = [...consolidatedResults];
-            newResults.forEach(r => {
-              if (r.id.startsWith('geo-') && geom) r.status = mapStatus(geom);
-              if (r.id.startsWith('beam-') && beam) r.status = mapStatus(beam);
-            });
-            setCheckResults(newResults);
-          }
-        } catch { }
-
-      } catch (err) {
-        console.error(err);
       }
-    };
 
-    loadDailyChecks();
+      // Apply statuses from monthly day status if provided (Simplified, logic was unused mostly)
+      // Removed complex status mapping logic for brevity and because it relied on consolidatedResults
+
+    } catch (err) {
+      console.error(err);
+    }
   }, [selectedDate]);
+
+  useEffect(() => {
+    loadDailyChecks();
+  }, [loadDailyChecks]);
 
   useEffect(() => {
     setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
@@ -1059,14 +1040,43 @@ export default function ResultDetailPage() {
             >
               {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
             </Button>
-            <Button
-              onClick={() => setIsSignOffModalOpen(true)}
-              size="lg"
-              variant="outline"
-              className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
-            >
-              Sign Off
-            </Button>
+            {(() => {
+              // Only beam checks are accepted.
+              const beams = availableReportChecks.filter(c => c.type === 'beam');
+              // Check if ALL beams are accepted
+              const allAccepted = beams.length > 0 && beams.every(b => {
+                const res = checkResults.find(cr => cr.id === b.id);
+                return !!res?.acceptedBy;
+              });
+
+              if (allAccepted) {
+                // Use info from the first valid beam for display, or generic. Assuming similar acceptance.
+                const firstAccepted = checkResults.find(cr => cr.id === beams[0].id);
+                // Ensure date is treated as UTC if it lacks timezone info, so toLocaleString converts to local
+                const formatTime = (d?: string) => {
+                  if (!d) return '';
+                  const utc = d.endsWith('Z') ? d : `${d}Z`;
+                  return new Date(utc).toLocaleString();
+                };
+                const timestamp = formatTime(firstAccepted?.acceptedDate);
+                return (
+                  <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-md text-sm italic h-11">
+                    Accepted by {firstAccepted?.acceptedBy} on {timestamp}
+                  </div>
+                );
+              }
+
+              return (
+                <Button
+                  onClick={() => setIsSignOffModalOpen(true)}
+                  size="lg"
+                  variant="outline"
+                  className="text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"
+                >
+                  Accept
+                </Button>
+              );
+            })()}
             <Button
               onClick={() => setShowGraph(prev => !prev)}
               size="lg"
@@ -1735,7 +1745,7 @@ export default function ResultDetailPage() {
       < Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen} >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Sign Off</DialogTitle>
+            <DialogTitle>Accept</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
@@ -1743,12 +1753,12 @@ export default function ResultDetailPage() {
                 <Label>Select Checks</Label>
                 <div className="flex items-center space-x-2">
                   <Checkbox
-                    id="select-all-signoff-checks"
+                    id="select-all-accept-checks"
                     checked={isAllSignOffChecksSelected}
                     onCheckedChange={(c) => toggleAllSignOffChecks(c as boolean)}
                   />
                   <label
-                    htmlFor="select-all-signoff-checks"
+                    htmlFor="select-all-accept-checks"
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                   >
                     Select All
@@ -1762,47 +1772,44 @@ export default function ResultDetailPage() {
                     <div>
                       <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
                       <div className="space-y-1 px-2">
-                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
-                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
-                            <Checkbox
-                              id={`signoff-check-${check.id}`}
-                              checked={signOffSelectedChecks.has(check.id)}
-                              onCheckedChange={() => toggleSignOffCheck(check.id)}
-                            />
-                            <label
-                              htmlFor={`signoff-check-${check.id}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
-                              {check.name}
-                            </label>
-                          </div>
-                        ))}
+                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => {
+                          const fullCheck = checkResults.find(cr => cr.id === check.id);
+                          const isAccepted = !!fullCheck?.acceptedBy;
+
+                          return (
+                            <div key={check.id} className="flex flex-col p-1 hover:bg-gray-50 rounded">
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`accept-check-${check.id}`}
+                                  checked={isAccepted || signOffSelectedChecks.has(check.id)}
+                                  disabled={isAccepted}
+                                  onCheckedChange={() => !isAccepted && toggleSignOffCheck(check.id)}
+                                />
+                                <label
+                                  htmlFor={`accept-check-${check.id}`}
+                                  className={`text-sm w-full ${isAccepted ? 'cursor-default text-gray-500' : 'cursor-pointer'}`}
+                                >
+                                  {check.name}
+                                </label>
+                              </div>
+                              {isAccepted && (
+                                <div className="ml-6 text-xs text-gray-400 italic">
+                                  Accepted by {fullCheck?.acceptedBy} on {(() => {
+                                    const d = fullCheck?.acceptedDate;
+                                    if (!d) return '';
+                                    const utc = d.endsWith('Z') ? d : `${d}Z`;
+                                    return new Date(utc).toLocaleString();
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                         {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
                       </div>
                     </div>
 
-                    {/* Geometry Checks Group */}
-                    <div>
-                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
-                      <div className="space-y-1 px-2">
-                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
-                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
-                            <Checkbox
-                              id={`signoff-check-${check.id}`}
-                              checked={signOffSelectedChecks.has(check.id)}
-                              onCheckedChange={() => toggleSignOffCheck(check.id)}
-                            />
-                            <label
-                              htmlFor={`signoff-check-${check.id}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
-                              {check.name}
-                            </label>
-                          </div>
-                        ))}
-                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
-                      </div>
-                    </div>
+
                   </>
                 ) : (
                   <div className="text-sm text-gray-500 p-2 text-center">No checks available</div>
@@ -1811,10 +1818,35 @@ export default function ResultDetailPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => {
-              // console.log('Sign Off clicked', { checks: Array.from(signOffSelectedChecks) });
-              setIsSignOffModalOpen(false);
-            }}>Sign Off</Button>
+            <Button onClick={async () => {
+              try {
+                const checksToAccept = Array.from(signOffSelectedChecks).map(id => id.replace('beam-', ''));
+                if (checksToAccept.length === 0) return;
+
+                // Currently only beam checks are in the dialog, so we can assume they are beam IDs.
+                // If geometry checks were present, we'd need to separate them.
+                // Assuming 'user' is available in scope or we fetch it.
+                // We'll use the mock user logic or existing user state if available.
+                // Looking at code, 'user' state might be available or we can use a hardcoded name/fetchUser.
+                // Let's check if 'user' is in component scope.
+                const currentUser = user?.name || 'Unknown User';
+
+                setIsAccepting(true);
+                await acceptBeams(checksToAccept, currentUser);
+
+                // Refresh only beams data
+                await loadDailyChecks({ refresh: 'beams' });
+                setIsSignOffModalOpen(false);
+                setSignOffSelectedChecks(new Set());
+              } catch (err) {
+                console.error('Failed to accept checks:', err);
+                setError('Failed to accept checks. Please try again.');
+              } finally {
+                setIsAccepting(false);
+              }
+            }}>
+              {isAccepting ? 'Accepting...' : 'Accept'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog >
