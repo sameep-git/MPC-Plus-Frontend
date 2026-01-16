@@ -52,10 +52,8 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/machines`;
-      console.log('[fetchMachines] Fetching:', url);
-      const result = await safeFetch(url);
-      console.log('[fetchMachines] Response:', result);
-      return result;
+
+      return await safeFetch(url);
     }
 
     if (supabase) {
@@ -68,7 +66,6 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
     console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
     return [];
   } catch (err) {
-    console.error('[fetchMachines] Error:', err);
     throw err;
   }
 };
@@ -99,9 +96,7 @@ export const fetchResults = async (month: number, year: number, machineId: strin
       url.searchParams.set('month', String(month));
       url.searchParams.set('year', String(year));
       url.searchParams.set('machineId', machineId);
-      console.log('[fetchResults] Fetching:', url.toString());
       const result = await safeFetch(url.toString());
-      console.log('[fetchResults] Response:', result);
       return result;
     }
 

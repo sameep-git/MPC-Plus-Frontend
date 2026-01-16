@@ -401,41 +401,42 @@ export default function ResultDetailPage() {
         // Process Beam Checks based on available types to ensure all are displayed
         const beamCheckResults: CheckResult[] = [];
 
-        availableBeamTypes.forEach(type => {
-          const beam = loadedBeams.find(b => b.type === type);
+        // Process loaded beams directly to ensure all returned data is displayed
+        loadedBeams.forEach((beam, index) => {
+          if (!beam || !beam.type) return;
+          const type = beam.type;
           const metrics: CheckMetric[] = [];
 
-          if (beam) {
-            // Add standard beam metrics
-            if (beam.relOutput !== undefined && beam.relOutput !== null) {
-              const name = createBeamSpecificMetricName('Relative Output', type);
-              metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-            if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
-              const name = createBeamSpecificMetricName('Relative Uniformity', type);
-              metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-            if (beam.centerShift !== undefined && beam.centerShift !== null) {
-              const name = createBeamSpecificMetricName('Center Shift', type);
-              metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
-            }
-          } else {
-            // Missing data for this beam type - show placeholder
-            const metricsList = ['Relative Output', 'Relative Uniformity', 'Center Shift'];
-            metricsList.forEach(m => {
-              metrics.push({ name: createBeamSpecificMetricName(m, type), value: '-', thresholds: '', absoluteValue: '', status: 'warning' });
-            });
+          // Add standard beam metrics
+          if (beam.relOutput !== undefined && beam.relOutput !== null) {
+            const name = createBeamSpecificMetricName('Relative Output', type);
+            metrics.push({ name, value: beam.relOutput, thresholds: '', absoluteValue: '', status: 'pass' });
+          }
+          if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
+            const name = createBeamSpecificMetricName('Relative Uniformity', type);
+            metrics.push({ name, value: beam.relUniformity, thresholds: '', absoluteValue: '', status: 'pass' });
+          }
+          if (beam.centerShift !== undefined && beam.centerShift !== null) {
+            const name = createBeamSpecificMetricName('Center Shift', type);
+            metrics.push({ name, value: beam.centerShift, thresholds: '', absoluteValue: '', status: 'pass' });
           }
 
           if (metrics.length > 0) {
+            // Use beam.id if available, otherwise fallback to type-index combo to ensure uniqueness
+            // This prevents duplicate key errors if multiple beams of the same type exist
+            const uniqueId = beam.id ? `beam-${beam.id}` : `beam-${type}-${index}`;
+
             beamCheckResults.push({
-              id: `beam-${type}`,
+              id: uniqueId,
               name: `Beam Check (${type})`,
-              status: beam ? 'PASS' : 'WARNING',
+              status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
               metrics
             });
           }
         });
+
+        // Sort beam results to maintain a consistent order (optional, alphanumerical)
+        beamCheckResults.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }));
 
         // MAPPING GEO CHECKS TO CHECK RESULTS (LEAVES)
         const geoLeaves: CheckResult[] = [];
@@ -779,11 +780,11 @@ export default function ResultDetailPage() {
 
   const handleSaveReport = () => {
     // Disabled functionality for now
-    console.log('Save report clicked', {
+    /* console.log('Save report clicked', {
       start: reportStartDate,
       end: reportEndDate,
       checks: Array.from(reportSelectedChecks)
-    });
+    }); */
     setIsReportModalOpen(false);
   };
 
@@ -1808,7 +1809,7 @@ export default function ResultDetailPage() {
           </div>
           <DialogFooter>
             <Button onClick={() => {
-              console.log('Sign Off clicked', { checks: Array.from(signOffSelectedChecks) });
+              // console.log('Sign Off clicked', { checks: Array.from(signOffSelectedChecks) });
               setIsSignOffModalOpen(false);
             }}>Sign Off</Button>
           </DialogFooter>

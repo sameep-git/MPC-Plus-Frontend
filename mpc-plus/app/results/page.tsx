@@ -132,7 +132,7 @@ export default function MPCResultPage() {
 
   const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
   const handleSaveReport = () => {
-    console.log('Generating report', { start: reportStartDate, end: reportEndDate, checks: Array.from(reportSelectedChecks) });
+    // console.log('Generating report', { start: reportStartDate, end: reportEndDate, checks: Array.from(reportSelectedChecks) });
     setIsReportModalOpen(false);
   };
 
