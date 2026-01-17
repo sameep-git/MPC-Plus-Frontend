@@ -10,6 +10,7 @@ export * from './checkbox';
 export * from './label';
 export * from './radio-group';
 export * from './date-picker';
+export * from './date-range-picker';
 export { default as Navbar } from './Navbar';
 export { default as UserMenu } from './UserMenu';
 export * from './UpdateCard';

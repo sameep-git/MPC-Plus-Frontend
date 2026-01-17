@@ -20,8 +20,10 @@ import {
   DialogFooter,
   Label,
   Checkbox,
-  DatePicker
+  DatePicker,
+  DateRangePicker
 } from '../../components/ui';
+import { DateRange } from 'react-day-picker';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
 
 // API response types
@@ -526,23 +528,19 @@ export default function MPCResultPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {/* Date Range Selection */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Start Date</Label>
-                <DatePicker
-                  date={reportStartDate}
-                  setDate={(d) => d && setReportStartDate(d)}
-                  className="w-full"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>End Date</Label>
-                <DatePicker
-                  date={reportEndDate}
-                  setDate={(d) => d && setReportEndDate(d)}
-                  className="w-full"
-                />
-              </div>
+            {/* Date Range Selection */}
+            <div className="space-y-2">
+              <Label>Date Range</Label>
+              <DateRangePicker
+                date={{ from: reportStartDate, to: reportEndDate }}
+                setDate={(range: DateRange | undefined) => {
+                  if (range?.from) {
+                    setReportStartDate(range.from);
+                    setReportEndDate(range.to || range.from);
+                  }
+                }}
+                className="w-full"
+              />
             </div>
 
             {/* Check Selection */}

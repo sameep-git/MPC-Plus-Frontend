@@ -14,7 +14,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { ChevronDown, ChevronUp, LineChart as ChartIcon, X, Eraser } from 'lucide-react';
-import { fetchUser, handleApiError, fetchGeoChecks, fetchBeamTypes, fetchBeams, acceptBeams } from '../../lib/api';
+import { fetchUser, handleApiError, fetchGeoChecks, fetchBeams, acceptBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -44,6 +44,8 @@ import { UI_CONSTANTS, GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
 import type { GeoCheck } from '../../models/GeoCheck';
 import type { Beam } from '../../models/Beam';
+import { DateRangePicker } from '../../components/ui/date-range-picker';
+import { DateRange } from "react-day-picker";
 
 const getGraphThresholdSettings = () => {
   const settings = getSettings();
@@ -130,40 +132,192 @@ interface GraphDataPoint {
 }
 
 // Generate mock graph data for multiple metrics
-const generateGraphData = (startDate: Date, endDate: Date, selectedMetrics: Set<string>): GraphDataPoint[] => {
+// Generate mock graph data or fallback structure when data is missing
+const generateGraphData = (startDate: Date, endDate: Date, _metrics: Set<string>): GraphDataPoint[] => {
   const data: GraphDataPoint[] = [];
   const currentDate = new Date(startDate);
+  const end = new Date(endDate);
 
-  while (currentDate <= endDate) {
-    const isoDate = currentDate.toISOString().split('T')[0];
-    const dataPoint: GraphDataPoint = {
-      date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+  const iterDate = new Date(currentDate);
+  // Ensure we compare apples to apples (dates)
+  iterDate.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  while (iterDate <= end) {
+    // Use local date string for ISO part to match how fetchGraphData likely works (or just ISO slice)
+    // fetchGraphData uses: const isoDate = currentDate.toISOString().split('T')[0];
+    // Note: toISOString is UTC. ensure we handle timezone correctly or consistent with fetchGraphData.
+    // fetchGraphData: 
+    // const isoDate = currentDate.toISOString().split('T')[0];
+    // const displayDate = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    // We will match that logic exactly.
+    // However, if iterDate is local midnight, toISOString might be previous day if negative offset.
+    // fetchGraphData takes startDate as Date.
+
+    // Let's stick to the convention used in fetchGraphData (which I should double check logic of later if needed, but for now matching it is best).
+    // Actually fetchGraphData does:
+    // const isoDate = currentDate.toISOString().split('T')[0];
+    // This suggests currentDate is expected to be UTC or we accept the UTC date string.
+
+    const isoDate = iterDate.toISOString().split('T')[0];
+    const displayDate = iterDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    const point: GraphDataPoint = {
+      date: displayDate,
       fullDate: isoDate,
     };
 
-    // Generate data for each selected metric
-    selectedMetrics.forEach((metricName) => {
-      // Create a sanitized key for the metric (remove special characters)
-      const key = getMetricKey(metricName);
+    data.push(point);
+    iterDate.setDate(iterDate.getDate() + 1);
+  }
+  return data;
+};
 
-      // Generate value based on metric type
-      let value = Math.random() * 12 - 6;
-      if (metricName.includes('Output Change')) {
-        value = Math.random() * 10 - 5; // -5 to 5 range
-      } else if (metricName.includes('Uniformity Change')) {
-        value = Math.random() * 8 - 4; // -4 to 4 range
-      } else if (metricName.includes('Center Shift')) {
-        value = Math.random() * 6 - 3; // -3 to 3 range
+// Helper to format date for API input
+const formatDateForInput = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const fetchGraphData = async (startDate: Date, endDate: Date): Promise<GraphDataPoint[]> => {
+  try {
+    // We need machineId to fetch data
+    let machineId = '';
+    if (typeof window !== 'undefined') {
+      machineId = sessionStorage.getItem('resultDetailMachineId') || localStorage.getItem('selectedMachineId') || '';
+    }
+    if (!machineId) return [];
+
+    const startStr = formatDateForInput(startDate);
+    const endStr = formatDateForInput(endDate);
+
+    const [beams, geoChecks] = await Promise.all([
+      fetchBeams({ machineId, startDate: startStr, endDate: endStr }),
+      fetchGeoChecks({ machineId, startDate: startStr, endDate: endStr })
+    ]);
+
+    const data: GraphDataPoint[] = [];
+    const currentDate = new Date(startDate);
+
+    // Create a map for quick lookup if needed, or just filter. 
+    // Since range is small (14 days), filtering is fine.
+
+    while (currentDate <= endDate) {
+      const isoDate = currentDate.toISOString().split('T')[0];
+      const displayDate = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      const dataPoint: GraphDataPoint = {
+        date: displayDate,
+        fullDate: isoDate,
+      };
+
+      // Map Beams
+      // Verify date matching. API dates are strings YYYY-MM-DD.
+      // We assume local date boundaries from the helper match API dates.
+
+      const dayBeams = beams.filter(b => b.date === isoDate);
+      dayBeams.forEach(b => {
+        if (b.type) {
+          const type = b.type;
+          if (b.relOutput !== undefined && b.relOutput !== null) {
+            const key = getMetricKey(createBeamSpecificMetricName('Relative Output', type));
+            dataPoint[key] = b.relOutput;
+          }
+          if (b.relUniformity !== undefined && b.relUniformity !== null) {
+            const key = getMetricKey(createBeamSpecificMetricName('Relative Uniformity', type));
+            dataPoint[key] = b.relUniformity;
+          }
+          if (b.centerShift !== undefined && b.centerShift !== null) {
+            const key = getMetricKey(createBeamSpecificMetricName('Center Shift', type));
+            dataPoint[key] = b.centerShift;
+          }
+        }
+      });
+
+      // Map Geo Checks
+      // Assuming one per day or taking the first one
+      const dayGeo = geoChecks.find(g => g.date === isoDate);
+      if (dayGeo) {
+        // IsoCenter
+        if (dayGeo.isoCenterSize !== undefined) dataPoint[getMetricKey('Iso Center Size')] = dayGeo.isoCenterSize;
+        if (dayGeo.isoCenterMVOffset !== undefined) dataPoint[getMetricKey('Iso Center MV Offset')] = dayGeo.isoCenterMVOffset;
+        if (dayGeo.isoCenterKVOffset !== undefined) dataPoint[getMetricKey('Iso Center KV Offset')] = dayGeo.isoCenterKVOffset;
+
+        // Geo Beam Group (Generic)
+        if (dayGeo.relativeOutput !== undefined) dataPoint[getMetricKey('Relative Output')] = dayGeo.relativeOutput;
+        if (dayGeo.relativeUniformity !== undefined) dataPoint[getMetricKey('Relative Uniformity')] = dayGeo.relativeUniformity;
+        // Note: Center Shift might conflict if names are identical, but Beam checks have (type) suffix.
+        if (dayGeo.centerShift !== undefined) dataPoint[getMetricKey('Center Shift')] = dayGeo.centerShift;
+
+        // Collimation
+        if (dayGeo.collimationRotationOffset !== undefined) dataPoint[getMetricKey('Collimation Rotation Offset')] = dayGeo.collimationRotationOffset;
+
+        // Gantry
+        if (dayGeo.gantryAbsolute !== undefined) dataPoint[getMetricKey('Gantry Absolute')] = dayGeo.gantryAbsolute;
+        if (dayGeo.gantryRelative !== undefined) dataPoint[getMetricKey('Gantry Relative')] = dayGeo.gantryRelative;
+
+        // Couch
+        if (dayGeo.couchLat !== undefined) dataPoint[getMetricKey('Couch Lat')] = dayGeo.couchLat;
+        if (dayGeo.couchLng !== undefined) dataPoint[getMetricKey('Couch Lng')] = dayGeo.couchLng;
+        if (dayGeo.couchVrt !== undefined) dataPoint[getMetricKey('Couch Vrt')] = dayGeo.couchVrt;
+        if (dayGeo.couchRtnFine !== undefined) dataPoint[getMetricKey('Couch Rtn Fine')] = dayGeo.couchRtnFine;
+        if (dayGeo.couchRtnLarge !== undefined) dataPoint[getMetricKey('Couch Rtn Large')] = dayGeo.couchRtnLarge;
+        if (dayGeo.couchMaxPositionError !== undefined) dataPoint[getMetricKey('Max Position Error')] = dayGeo.couchMaxPositionError;
+        if (dayGeo.rotationInducedCouchShiftFullRange !== undefined) dataPoint[getMetricKey('Rotation Induced Shift')] = dayGeo.rotationInducedCouchShiftFullRange;
+
+        // Jaws
+        if (dayGeo.jawX1 !== undefined) dataPoint[getMetricKey('Jaw X1')] = dayGeo.jawX1;
+        if (dayGeo.jawX2 !== undefined) dataPoint[getMetricKey('Jaw X2')] = dayGeo.jawX2;
+        if (dayGeo.jawY1 !== undefined) dataPoint[getMetricKey('Jaw Y1')] = dayGeo.jawY1;
+        if (dayGeo.jawY2 !== undefined) dataPoint[getMetricKey('Jaw Y2')] = dayGeo.jawY2;
+
+        // Jaws Parallelism
+        if (dayGeo.jawParallelismX1 !== undefined) dataPoint[getMetricKey('Parallelism X1')] = dayGeo.jawParallelismX1;
+        if (dayGeo.jawParallelismX2 !== undefined) dataPoint[getMetricKey('Parallelism X2')] = dayGeo.jawParallelismX2;
+        if (dayGeo.jawParallelismY1 !== undefined) dataPoint[getMetricKey('Parallelism Y1')] = dayGeo.jawParallelismY1;
+        if (dayGeo.jawParallelismY2 !== undefined) dataPoint[getMetricKey('Parallelism Y2')] = dayGeo.jawParallelismY2;
+
+        // MLC Offsets
+        if (dayGeo.meanOffsetA !== undefined) dataPoint[getMetricKey('Mean Offset A')] = dayGeo.meanOffsetA;
+        if (dayGeo.maxOffsetA !== undefined) dataPoint[getMetricKey('Max Offset A')] = dayGeo.maxOffsetA;
+        if (dayGeo.meanOffsetB !== undefined) dataPoint[getMetricKey('Mean Offset B')] = dayGeo.meanOffsetB;
+        if (dayGeo.maxOffsetB !== undefined) dataPoint[getMetricKey('Max Offset B')] = dayGeo.maxOffsetB;
+
+        // Not mapping all dynamic leaves (MLC/Backlash) to avoid graph clutter unless requested, 
+        // as they are 120+ leaves. But we need them available if selected.
+        if (dayGeo.mlcLeavesA) {
+          Object.entries(dayGeo.mlcLeavesA).forEach(([key, val]) => {
+            dataPoint[getMetricKey(`MLC A Leaf ${key}`)] = val as number;
+          });
+        }
+        if (dayGeo.mlcLeavesB) {
+          Object.entries(dayGeo.mlcLeavesB).forEach(([key, val]) => {
+            dataPoint[getMetricKey(`MLC B Leaf ${key}`)] = val as number;
+          });
+        }
+        if (dayGeo.mlcBacklashA) {
+          Object.entries(dayGeo.mlcBacklashA).forEach(([key, val]) => {
+            dataPoint[getMetricKey(`Backlash A Leaf ${key}`)] = val as number;
+          });
+        }
+        if (dayGeo.mlcBacklashB) {
+          Object.entries(dayGeo.mlcBacklashB).forEach(([key, val]) => {
+            dataPoint[getMetricKey(`Backlash B Leaf ${key}`)] = val as number;
+          });
+        }
       }
 
-      dataPoint[key] = value;
-    });
-
-    data.push(dataPoint);
-    currentDate.setDate(currentDate.getDate() + 1);
+      data.push(dataPoint);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch graph data', err);
+    return [];
   }
-
-  return data;
 };
 
 export default function ResultDetailPage() {
@@ -172,15 +326,10 @@ export default function ResultDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Parse a YYYY-MM-DD string as a local Date to avoid UTC offset shifting
-  const parseLocalDateString = (s: string): Date => {
-    const [y, m, d] = s.split('-').map((n) => Number(n));
-    if (!y || !m || !d) return new Date(s);
-    return new Date(y, m - 1, d);
-  };
+
 
   // Get date from sessionStorage (passed from results page) or use current date
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+  const [selectedDate] = useState<Date>(() => {
     if (typeof window !== 'undefined') {
       const stored = sessionStorage.getItem('resultDetailDate');
       if (stored) {
@@ -230,10 +379,6 @@ export default function ResultDetailPage() {
     setGraphDateRange({ start, end });
   }, [selectedDate]);
 
-
-  const [tempStartDate, setTempStartDate] = useState<string>('');
-  const [tempEndDate, setTempEndDate] = useState<string>('');
-
   // Threshold settings for graph shading sourced from global settings
   const [graphThresholdSettings, setGraphThresholdSettings] = useState(() => getGraphThresholdSettings());
   const [baselineSettings, setBaselineSettings] = useState(() => getBaselineSettingsSnapshot());
@@ -267,12 +412,11 @@ export default function ResultDetailPage() {
       .map(b => ({ id: b.id, name: b.name, type: 'beam' }));
 
     // Geometry checks (assuming roughly they start with geo-)
-    // Excluded from acceptance/reporting as per requirements
-    /* const geos = checkResults
-       .filter(c => c.id.startsWith('geo-'))
-       .map(g => ({ id: g.id, name: g.name, type: 'geo' })); */
+    const geos = checkResults
+      .filter(c => c.id.startsWith('geo-'))
+      .map(g => ({ id: g.id, name: g.name, type: 'geo' }));
 
-    return [...beams];
+    return [...beams, ...geos];
   }, [checkResults]);
 
   // Initial selection of all checks when available
@@ -280,7 +424,7 @@ export default function ResultDetailPage() {
     if (availableReportChecks.length > 0 && reportSelectedChecks.size === 0) {
       setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
     }
-  }, [availableReportChecks]);
+  }, [availableReportChecks, reportSelectedChecks.size]);
 
   // Sync report dates with selectedDate
   useEffect(() => {
@@ -332,9 +476,7 @@ export default function ResultDetailPage() {
 
   const isAllSignOffChecksSelected = availableReportChecks.length > 0 && signOffSelectedChecks.size === availableReportChecks.length;
 
-  const [graphData, setGraphData] = useState<GraphDataPoint[]>(() =>
-    generateGraphData(graphDateRange.start, graphDateRange.end, new Set())
-  );
+  const [graphData, setGraphData] = useState<GraphDataPoint[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -457,17 +599,7 @@ export default function ResultDetailPage() {
             ]
           });
 
-          // BeamGroup (Geo)
-          geoLeaves.push({
-            id: 'geo-beam',
-            name: 'Beam Group',
-            status: 'PASS',
-            metrics: [
-              { name: 'Relative Output', value: gc.relativeOutput ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
-              { name: 'Relative Uniformity', value: gc.relativeUniformity ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
-              { name: 'Center Shift', value: gc.centerShift ?? '', thresholds: '', absoluteValue: '', status: 'pass' },
-            ]
-          });
+
 
           // CollimationGroup
           geoLeaves.push({
@@ -510,7 +642,7 @@ export default function ResultDetailPage() {
           const mlcAMetrics: CheckMetric[] = [];
           if (gc.mlcLeavesA) {
             Object.entries(gc.mlcLeavesA).forEach(([key, val]) => {
-              mlcAMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+              mlcAMetrics.push({ name: `MLC A Leaf ${key}`, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
             });
           }
           geoLeaves.push({
@@ -524,7 +656,7 @@ export default function ResultDetailPage() {
           const mlcBMetrics: CheckMetric[] = [];
           if (gc.mlcLeavesB) {
             Object.entries(gc.mlcLeavesB).forEach(([key, val]) => {
-              mlcBMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+              mlcBMetrics.push({ name: `MLC B Leaf ${key}`, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
             });
           }
           geoLeaves.push({
@@ -551,7 +683,7 @@ export default function ResultDetailPage() {
           const backlashAMetrics: CheckMetric[] = [];
           if (gc.mlcBacklashA) {
             Object.entries(gc.mlcBacklashA).forEach(([key, val]) => {
-              backlashAMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+              backlashAMetrics.push({ name: `Backlash A Leaf ${key}`, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
             });
           }
           geoLeaves.push({
@@ -565,7 +697,7 @@ export default function ResultDetailPage() {
           const backlashBMetrics: CheckMetric[] = [];
           if (gc.mlcBacklashB) {
             Object.entries(gc.mlcBacklashB).forEach(([key, val]) => {
-              backlashBMetrics.push({ name: key, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
+              backlashBMetrics.push({ name: `Backlash B Leaf ${key}`, value: val as number, thresholds: '', absoluteValue: '', status: 'pass' });
             });
           }
           geoLeaves.push({
@@ -621,8 +753,14 @@ export default function ResultDetailPage() {
   }, [loadDailyChecks]);
 
   useEffect(() => {
-    setGraphData(generateGraphData(graphDateRange.start, graphDateRange.end, selectedMetrics));
-  }, [graphDateRange, selectedMetrics]);
+    let isMounted = true;
+    const loadGraph = async () => {
+      const data = await fetchGraphData(graphDateRange.start, graphDateRange.end);
+      if (isMounted) setGraphData(data);
+    };
+    loadGraph();
+    return () => { isMounted = false; };
+  }, [graphDateRange]);
 
   useEffect(() => {
     const refreshSettings = () => {
@@ -642,18 +780,8 @@ export default function ResultDetailPage() {
   }, []);
 
   // Initialize temp dates when picker opens
-  useEffect(() => {
-    // This useEffect now only runs when graphDateRange changes,
-    // assuming the picker state is managed externally or removed.
-    const formatDateForInput = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-    setTempStartDate(formatDateForInput(graphDateRange.start));
-    setTempEndDate(formatDateForInput(graphDateRange.end));
-  }, [graphDateRange]);
+  // Initialize temp dates when picker opens
+
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => {
@@ -691,34 +819,13 @@ export default function ResultDetailPage() {
     return num.toFixed(3);
   };
 
-  const handleDateRangeApply = () => {
-    if (tempStartDate && tempEndDate) {
-      const start = new Date(tempStartDate);
-      const end = new Date(tempEndDate);
-
-      // Ensure start is before end
-      if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        if (start > end) {
-          alert('Start date must be before end date');
-          return;
-        }
-        setGraphDateRange({ start, end });
-      }
+  const handleDateRangeChange = (range: DateRange | undefined) => {
+    if (range?.from) {
+      setGraphDateRange({
+        start: range.from,
+        end: range.to || range.from // Default to start date if no end date yet
+      });
     }
-  };
-
-  const handleDateRangeCancel = () => {
-    // Reset temp dates to current range
-    const formatDateForInput = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-    setTempStartDate(formatDateForInput(graphDateRange.start));
-    setTempEndDate(formatDateForInput(graphDateRange.end));
-    setTempStartDate(formatDateForInput(graphDateRange.start));
-    setTempEndDate(formatDateForInput(graphDateRange.end));
   };
 
   const handleQuickDateRange = (range: string) => {
@@ -775,12 +882,15 @@ export default function ResultDetailPage() {
 
   // Calculate Y-axis domain based on selected metrics and data
 
-  // Get all available metrics from all beams
+  // Get all available metrics from all beams, excluding individual leaves to avoid clutter
   const getAllAvailableMetrics = (): string[] => {
     const metricsSet = new Set<string>();
     checkResults.forEach(check => {
       check.metrics.forEach(metric => {
-        metricsSet.add(metric.name);
+        // Exclude leaves from dropdown, they can be selected via table
+        if (!metric.name.includes('Leaf')) {
+          metricsSet.add(metric.name);
+        }
       });
     });
     return Array.from(metricsSet).sort();
@@ -1088,62 +1198,8 @@ export default function ResultDetailPage() {
               Graph
               <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
             </Button>
-            {/* Date Range Picker Dropdown
-            <div className="relative date-range-picker-container">
-              <button
-                onClick={() => setActiveDateRangePicker(prev => (prev === 'header' ? null : 'header'))}
-                className="bg-white border border-gray-300 text-foreground px-4 py-2 rounded-lg text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[280px]"
-              >
-                <span className="truncate">
-                  {formatDateRange(graphDateRange.start, graphDateRange.end)}
-                </span>
-                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ml-2 shrink-0 ${activeDateRangePicker === 'header' ? 'transform rotate-180' : ''}`} />
-              </button>
-              
-              {activeDateRangePicker === 'header' && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg p-4 min-w-[280px]">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">
-                        Start Date
-                      </label>
-                      <input
-                        type="date"
-                        value={tempStartDate}
-                        onChange={(e) => setTempStartDate(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">
-                        End Date
-                      </label>
-                      <input
-                        type="date"
-                        value={tempEndDate}
-                        onChange={(e) => setTempEndDate(e.target.value)}
-                        min={tempStartDate}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={handleDateRangeApply}
-                        className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                      >
-                        Apply
-                      </button>
-                      <button
-                        onClick={handleDateRangeCancel}
-                        className="flex-1 px-4 py-2 bg-gray-100 text-muted-foreground rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div> */}
+
+
           </div>
         </div>
 
@@ -1236,7 +1292,7 @@ export default function ResultDetailPage() {
               {expandedChecks.has('group-geo-checks') && (
                 <div className="p-2 space-y-2">
                   {/* Render Geo Subgroups */}
-                  {['geo-isocenter', 'geo-beam', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-para', 'geo-mlc-offsets'].map(id => {
+                  {['geo-isocenter', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-parallelism', 'geo-mlc-offsets'].map(id => {
                     const check = checkResults.find(c => c.id === id);
                     if (!check) return null;
                     return (
@@ -1305,7 +1361,15 @@ export default function ResultDetailPage() {
                                     <TableBody>
                                       {check.metrics.map((m, idx) => (
                                         <TableRow key={idx}>
-                                          <TableCell className="py-1 text-xs">{m.name}</TableCell>
+                                          <TableCell className="py-1 text-xs">
+                                            <div className="flex items-center gap-2">
+                                              {m.name}
+                                              <Button variant="ghost" size="icon" className="h-4 w-4"
+                                                onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
+                                                <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
+                                              </Button>
+                                            </div>
+                                          </TableCell>
                                           <TableCell className="py-1 text-xs text-right">{formatMetricValue(m.name, m.value)}</TableCell>
                                         </TableRow>
                                       ))}
@@ -1343,7 +1407,15 @@ export default function ResultDetailPage() {
                                     <TableBody>
                                       {check.metrics.map((m, idx) => (
                                         <TableRow key={idx}>
-                                          <TableCell className="py-1 text-xs">{m.name}</TableCell>
+                                          <TableCell className="py-1 text-xs">
+                                            <div className="flex items-center gap-2">
+                                              {m.name}
+                                              <Button variant="ghost" size="icon" className="h-4 w-4"
+                                                onClick={(e) => { e.stopPropagation(); toggleMetric(m.name); }}>
+                                                <ChartIcon className={`w-3 h-3 ${selectedMetrics.has(m.name) ? 'text-primary' : 'text-gray-400'}`} />
+                                              </Button>
+                                            </div>
+                                          </TableCell>
                                           <TableCell className="py-1 text-xs text-right">{formatMetricValue(m.name, m.value)}</TableCell>
                                         </TableRow>
                                       ))}
@@ -1514,115 +1586,39 @@ export default function ResultDetailPage() {
 
                 {/* Quick Date Options */}
                 <div className="mb-4 border border-gray-200 rounded-lg p-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleQuickDateRange('today')}
-                      className="whitespace-nowrap"
-                    >
-                      Today
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleQuickDateRange('yesterday')}
-                      className="whitespace-nowrap"
-                    >
-                      Yesterday
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleQuickDateRange('lastWeek')}
-                      className="whitespace-nowrap"
-                    >
-                      Last week
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleQuickDateRange('lastMonth')}
-                      className="whitespace-nowrap"
-                    >
-                      Last month
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleQuickDateRange('lastQuarter')}
-                      className="whitespace-nowrap"
-                    >
-                      Last quarter
-                    </Button>
-                    <div className="relative date-range-picker-container">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="gap-2"
-                            onClick={() => {
-                              // Pre-fill with decent defaults if empty, logic preserved from original
-                              const end = new Date();
-                              const start = new Date();
-                              start.setMonth(start.getMonth() - 3);
-                              setGraphDateRange({ start, end });
-                            }}
-                          >
-                            <span className="whitespace-nowrap">Custom range</span>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {formatDateRange(graphDateRange.start, graphDateRange.end)}
-                            </span>
-                            <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-data-[state=open]:rotate-180" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[280px] p-4" align="start">
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-sm font-medium text-muted-foreground mb-2">
-                                Start Date
-                              </label>
-                              <DatePicker
-                                date={tempStartDate ? new Date(tempStartDate) : undefined}
-                                setDate={(date) => {
-                                  if (date) {
-                                    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-                                    const isoDate = offsetDate.toISOString().split('T')[0];
-                                    setTempStartDate(isoDate);
-                                  }
-                                }}
-                                className="w-full"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-muted-foreground mb-2">
-                                End Date
-                              </label>
-                              <DatePicker
-                                date={tempEndDate ? new Date(tempEndDate) : undefined}
-                                setDate={(date) => {
-                                  if (date) {
-                                    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-                                    const isoDate = offsetDate.toISOString().split('T')[0];
-                                    setTempEndDate(isoDate);
-                                  }
-                                }}
-                                className="w-full"
-                              />
-                            </div>
-                            <div className="flex gap-2 pt-2">
-                              <Button
-                                onClick={handleDateRangeApply}
-                                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                              >
-                                Apply
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={handleDateRangeCancel} // This might need a refactor if it relies on manual state closing
-                                className="flex-1"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleQuickDateRange('lastWeek')}
+                        className="whitespace-nowrap text-muted-foreground hover:text-foreground"
+                      >
+                        Last week
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleQuickDateRange('lastMonth')}
+                        className="whitespace-nowrap text-muted-foreground hover:text-foreground"
+                      >
+                        Last month
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleQuickDateRange('lastQuarter')}
+                        className="whitespace-nowrap text-muted-foreground hover:text-foreground"
+                      >
+                        Last quarter
+                      </Button>
+                    </div>
+                    <div className="relative date-range-picker-container w-full sm:w-auto">
+                      <DateRangePicker
+                        date={{ from: graphDateRange.start, to: graphDateRange.end }}
+                        setDate={handleDateRangeChange}
+                        className="w-full"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1820,7 +1816,9 @@ export default function ResultDetailPage() {
           <DialogFooter>
             <Button onClick={async () => {
               try {
-                const checksToAccept = Array.from(signOffSelectedChecks).map(id => id.replace('beam-', ''));
+                const checksToAccept = Array.from(signOffSelectedChecks)
+                  .filter(id => id.startsWith('beam-'))
+                  .map(id => id.replace('beam-', ''));
                 if (checksToAccept.length === 0) return;
 
                 // Currently only beam checks are in the dialog, so we can assume they are beam IDs.
