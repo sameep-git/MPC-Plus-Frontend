@@ -25,7 +25,7 @@ export default function UserMenu({ user }: UserMenuProps) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 data-[state=open]:bg-gray-50 outline-none">
+      <DropdownMenuTrigger className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 data-[state=open]:bg-gray-50 outline-none">
         {/* Avatar */}
         <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
           <span className="text-white text-sm font-medium">
@@ -36,7 +36,7 @@ export default function UserMenu({ user }: UserMenuProps) {
         {/* User Info */}
         <div className="flex flex-col items-start text-left">
           <span className="text-sm font-medium text-gray-900">
-            {user?.name || 'Loading...'}
+            {user?.name || 'Loading…'}
           </span>
           <span className="text-xs text-gray-500 capitalize">
             {user?.role || 'User'}

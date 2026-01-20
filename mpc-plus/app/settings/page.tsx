@@ -418,10 +418,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="graph-threshold-top" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Top Threshold (%)
                 </label>
                 <Input
+                  id="graph-threshold-top"
                   type="number"
                   step="0.01"
                   value={settings.graphThresholdTopPercent}
@@ -432,10 +433,11 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="graph-threshold-bottom" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Bottom Threshold (%)
                 </label>
                 <Input
+                  id="graph-threshold-bottom"
                   type="number"
                   step="0.01"
                   value={settings.graphThresholdBottomPercent}
