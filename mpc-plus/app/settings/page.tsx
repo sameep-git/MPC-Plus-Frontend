@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError, fetchThresholds, saveThreshold, type Threshold } from '../../lib/api';
+import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, type Threshold } from '../../lib/api';
+import type { Machine } from '../../models/Machine';
 import {
   Navbar,
   Button,
@@ -117,6 +118,8 @@ export default function SettingsPage() {
 
   // Threshold State
   const [thresholds, setThresholds] = useState<Threshold[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [selectedMachineId, setSelectedMachineId] = useState<string>('default-machine');
   const [checkType, setCheckType] = useState<'beam' | 'geometry'>('beam');
   const [beamVariant, setBeamVariant] = useState<string>('6x');
   const [currentPage, setCurrentPage] = useState(1);
@@ -137,20 +140,30 @@ export default function SettingsPage() {
       }
     };
 
-    const loadThresholds = async () => {
+    const loadData = async () => {
       try {
         setLoadingThresholds(true);
-        const data = await fetchThresholds();
-        setThresholds(data);
+        const [machinesData, thresholdsData] = await Promise.all([
+          fetchMachines(),
+          fetchThresholds()
+        ]);
+
+        setMachines(machinesData);
+        if (machinesData.length > 0 && selectedMachineId === 'default-machine') {
+          // Default to first machine if we are on default and real machines exist
+          setSelectedMachineId(machinesData[0].id);
+        }
+
+        setThresholds(thresholdsData);
       } catch (error) {
-        console.error('Error loading thresholds:', error);
+        console.error('Error loading data:', error);
       } finally {
         setLoadingThresholds(false);
       }
     };
 
     loadUser();
-    loadThresholds();
+    loadData();
   }, []);
 
   // Handle browser back button to navigate to calendar (results) page
@@ -279,6 +292,7 @@ export default function SettingsPage() {
   const getThresholdValue = (metric: string) => {
     const found = thresholds.find(
       (t) =>
+        t.machineId === selectedMachineId &&
         t.checkType === checkType &&
         t.metricType === metric &&
         (checkType === 'beam' ? t.beamVariant === beamVariant : true)
@@ -297,7 +311,7 @@ export default function SettingsPage() {
 
       const newItem: Threshold = {
         id: existingIndex >= 0 ? prev[existingIndex].id : undefined,
-        machineId: 'default-machine', // TODO: In multi-machine setups, user should select machine
+        machineId: selectedMachineId,
         checkType,
         metricType: metric,
         beamVariant: checkType === 'beam' ? beamVariant : undefined,
@@ -326,6 +340,7 @@ export default function SettingsPage() {
       for (const metric of metricsToSave) {
         const threshold = thresholds.find(
           (t) =>
+            t.machineId === selectedMachineId &&
             t.checkType === checkType &&
             t.metricType === metric &&
             (checkType === 'beam' ? t.beamVariant === beamVariant : true)
@@ -343,7 +358,7 @@ export default function SettingsPage() {
           // We can construct it and save.
           const val = getThresholdValue(metric);
           const newItem: Threshold = {
-            machineId: 'default-machine',
+            machineId: selectedMachineId,
             checkType,
             metricType: metric,
             beamVariant: checkType === 'beam' ? beamVariant : undefined,
@@ -468,8 +483,21 @@ export default function SettingsPage() {
 
           <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
             <CardHeader>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+              <div className="flex flex-col md:flex-row gap-2 items-end">
+                <div className="w-full md:w-[200px]">
+                  <Label>Machine</Label>
+                  <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select machine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {machines.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.name || m.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-full md:w-[200px]">
                   <Label>Check Type</Label>
                   <Select value={checkType} onValueChange={(val: 'beam' | 'geometry') => setCheckType(val)}>
                     <SelectTrigger className="mt-1">
@@ -482,7 +510,7 @@ export default function SettingsPage() {
                   </Select>
                 </div>
                 {checkType === 'beam' && (
-                  <div>
+                  <div className="w-full md:w-[200px]">
                     <Label>Beam Variant</Label>
                     <Select value={beamVariant} onValueChange={setBeamVariant}>
                       <SelectTrigger className="mt-1">
