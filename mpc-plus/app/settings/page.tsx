@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError } from '../../lib/api';
+import { fetchUser, handleApiError, fetchThresholds, saveThreshold, type Threshold } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -15,7 +15,12 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  SelectValue,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter
 } from '../../components/ui';
 import { NAVIGATION } from '../../constants';
 import { TEAM_COLORS } from '../../constants/teamColors';
@@ -25,29 +30,56 @@ import {
   saveSettings,
   updateTheme,
   updateAccentColor,
-  updateThresholds,
   updateGraphThresholds,
   updateBaselineSettings,
-  DEFAULT_ACCENT_COLOR,
   type Theme,
-  type BeamThresholds,
   type AppSettings,
   type BaselineMode,
   type BaselineManualValues,
 } from '../../lib/settings';
 
-const BEAM_NAMES = {
-  'beam-2.5x': 'Beam Check (2.5x)',
-  'beam-6x': 'Beam Check (6x)',
-  'beam-6xfff': 'Beam Check (6xFFF)',
-  'beam-10x': 'Beam Check (10x)',
+const BEAM_METRICS = {
+  'Relative Output': 'Relative Output (%)',
+  'Relative Uniformity': 'Relative Uniformity (%)',
+  'Center Shift': 'Center Shift (mm)',
 } as const;
 
-const METRIC_NAMES = {
-  outputChange: 'Output Change (%)',
-  uniformityChange: 'Uniformity Change (%)',
-  centerShift: 'Center Shift',
+const GEO_METRICS = {
+  // IsoCenter
+  'Iso Center Size': 'Iso Center Size (mm)',
+  'Iso Center MV Offset': 'Iso Center MV Offset (mm)',
+  'Iso Center KV Offset': 'Iso Center KV Offset (mm)',
+  // Collimation
+  'Collimation Rotation Offset': 'Collimation Rotation Offset (deg)',
+  // Gantry
+  'Gantry Absolute': 'Gantry Absolute (deg)',
+  'Gantry Relative': 'Gantry Relative (deg)',
+  // Couch
+  'Couch Lat': 'Couch Lat (mm)',
+  'Couch Lng': 'Couch Lng (mm)',
+  'Couch Vrt': 'Couch Vrt (mm)',
+  'Couch Rtn Fine': 'Couch Rtn Fine (deg)',
+  'Couch Rtn Large': 'Couch Rtn Large (deg)',
+  'Max Position Error': 'Max Position Error (mm)',
+  'Rotation Induced Shift': 'Rotation Induced Shift (mm)',
+  // MLC Offsets
+  'Mean Offset A': 'Mean Offset A (mm)',
+  'Max Offset A': 'Max Offset A (mm)',
+  'Mean Offset B': 'Mean Offset B (mm)',
+  'Max Offset B': 'Max Offset B (mm)',
+  // Jaws
+  'Jaw X1': 'Jaw X1 (mm)',
+  'Jaw X2': 'Jaw X2 (mm)',
+  'Jaw Y1': 'Jaw Y1 (mm)',
+  'Jaw Y2': 'Jaw Y2 (mm)',
+  // Jaws Parallelism
+  'Parallelism X1': 'Parallelism X1 (deg)',
+  'Parallelism X2': 'Parallelism X2 (deg)',
+  'Parallelism Y1': 'Parallelism Y1 (deg)',
+  'Parallelism Y2': 'Parallelism Y2 (deg)',
 } as const;
+
+const ITEMS_PER_PAGE = 6;
 
 const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: string; helper?: string }> = [
   {
@@ -69,18 +101,28 @@ const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: st
 
 const SETTINGS_SECTIONS = [
   { id: 'theme-settings', label: 'Theme & Accent' },
-  { id: 'beam-threshold-settings', label: 'Beam Thresholds' },
+  { id: 'beam-threshold-settings', label: 'Threshold Configuration' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
 ] as const;
 
+const BEAM_VARIANTS = ['6x', '6xff', '10x', '15x', '6e', '9e', '12e', '16e']; // Common variants
+
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
-
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(() => getSettings());
   const [saved, setSaved] = useState(false);
+
+  // Threshold State
+  const [thresholds, setThresholds] = useState<Threshold[]>([]);
+  const [checkType, setCheckType] = useState<'beam' | 'geometry'>('beam');
+  const [beamVariant, setBeamVariant] = useState<string>('6x');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [loadingThresholds, setLoadingThresholds] = useState(false);
+  const [savingThresholds, setSavingThresholds] = useState(false);
+  const [thresholdSuccess, setThresholdSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -92,12 +134,23 @@ export default function SettingsPage() {
         const errorMessage = handleApiError(error);
         setError(errorMessage);
         console.error('Error loading user:', error);
-      } finally {
+      }
+    };
 
+    const loadThresholds = async () => {
+      try {
+        setLoadingThresholds(true);
+        const data = await fetchThresholds();
+        setThresholds(data);
+      } catch (error) {
+        console.error('Error loading thresholds:', error);
+      } finally {
+        setLoadingThresholds(false);
       }
     };
 
     loadUser();
+    loadThresholds();
   }, []);
 
   // Handle browser back button to navigate to calendar (results) page
@@ -105,21 +158,16 @@ export default function SettingsPage() {
     if (typeof window === 'undefined') return;
 
     const handlePopState = (event: PopStateEvent) => {
-      // Only navigate to calendar if we're not just changing the hash
-      // If the state has fromSettings, it means we're going back from settings
       if (event.state?.fromSettings && !window.location.hash) {
         router.replace(NAVIGATION.ROUTES.MPC_RESULT);
       }
     };
 
-    // Add a history entry so we can intercept the back button
-    // Only if we don't already have a hash in the URL
     if (!window.location.hash) {
       window.history.pushState({ fromSettings: true }, '', window.location.href);
     }
 
     window.addEventListener('popstate', handlePopState);
-
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
@@ -133,26 +181,6 @@ export default function SettingsPage() {
   const handleAccentChange = (color: string) => {
     updateAccentColor(color);
     setSettings((prev) => ({ ...prev, accentColor: color }));
-  };
-
-  const handleThresholdChange = (
-    beamId: keyof BeamThresholds,
-    metric: 'outputChange' | 'uniformityChange' | 'centerShift',
-    field: 'min' | 'max',
-    value: number
-  ) => {
-    const newThresholds = {
-      ...settings.thresholds,
-      [beamId]: {
-        ...settings.thresholds[beamId],
-        [metric]: {
-          ...settings.thresholds[beamId][metric],
-          [field]: value,
-        },
-      },
-    };
-    setSettings((prev) => ({ ...prev, thresholds: newThresholds }));
-    updateThresholds(newThresholds);
   };
 
   const handleGraphThresholdChange = (
@@ -234,6 +262,107 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  // Threshold logic
+  const activeMetrics = checkType === 'beam' ? BEAM_METRICS : GEO_METRICS;
+  const activeMetricEntries = Object.entries(activeMetrics);
+  const totalPages = Math.ceil(activeMetricEntries.length / ITEMS_PER_PAGE);
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentMetrics = activeMetricEntries.slice(startIndex, endIndex);
+
+  // Reset pagination when check type changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [checkType]);
+
+  const getThresholdValue = (metric: string) => {
+    const found = thresholds.find(
+      (t) =>
+        t.checkType === checkType &&
+        t.metricType === metric &&
+        (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+    );
+    return found?.value ?? 0;
+  };
+
+  const updateThresholdValue = (metric: string, value: number) => {
+    setThresholds((prev) => {
+      const existingIndex = prev.findIndex(
+        (t) =>
+          t.checkType === checkType &&
+          t.metricType === metric &&
+          (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+      );
+
+      const newItem: Threshold = {
+        id: existingIndex >= 0 ? prev[existingIndex].id : undefined,
+        machineId: 'default-machine', // TODO: In multi-machine setups, user should select machine
+        checkType,
+        metricType: metric,
+        beamVariant: checkType === 'beam' ? beamVariant : undefined,
+        value,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      if (existingIndex >= 0) {
+        const newArr = [...prev];
+        newArr[existingIndex] = newItem;
+        return newArr;
+      } else {
+        return [...prev, newItem];
+      }
+    });
+  };
+
+  const handleSaveThresholds = async () => {
+    setSavingThresholds(true);
+    setThresholdSuccess(null);
+    try {
+      // Find all thresholds relevant to current selection and save them
+      // In a real app we might verify what actually changed, but here we just upsert the current view's metrics
+      const metricsToSave = Object.keys(activeMetrics);
+
+      for (const metric of metricsToSave) {
+        const threshold = thresholds.find(
+          (t) =>
+            t.checkType === checkType &&
+            t.metricType === metric &&
+            (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+        );
+
+        if (threshold) {
+          await saveThreshold(threshold);
+        } else {
+          // Create new if strictly needed, but updateThresholdValue handles adding to state,
+          // so it should be in 'thresholds' array if user edited it.
+          // If user simply views and clicks save without editing, updateThresholdValue wasn't called.
+          // But we might want to save defaults? 
+          // Let's assume user edited or we just save what is in state.
+          // If it's not in state, it means it's 0 (default from getThresholdValue) AND user never touched it.
+          // We can construct it and save.
+          const val = getThresholdValue(metric);
+          const newItem: Threshold = {
+            machineId: 'default-machine',
+            checkType,
+            metricType: metric,
+            beamVariant: checkType === 'beam' ? beamVariant : undefined,
+            value: val, // which is 0 if not found
+          };
+          await saveThreshold(newItem);
+        }
+      }
+
+      setThresholdSuccess('Thresholds updated successfully!');
+      setTimeout(() => setThresholdSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to save thresholds', error);
+      setError('Failed to save thresholds');
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 transition-colors">
       <Navbar user={user} />
@@ -266,7 +395,7 @@ export default function SettingsPage() {
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <p className="text-red-600 dark:text-red-400">Error loading user: {error}</p>
+            <p className="text-red-600 dark:text-red-400">Error: {error}</p>
           </div>
         )}
 
@@ -276,10 +405,7 @@ export default function SettingsPage() {
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            Choose your preferred theme for the application.
-          </p>
-          <div className="flex gap-4">
+          <div className="flex gap-4 mb-8">
             <Button
               onClick={() => handleThemeChange('light')}
               variant={settings.theme === 'light' ? 'default' : 'outline'}
@@ -295,112 +421,139 @@ export default function SettingsPage() {
               Dark
             </Button>
           </div>
-
-          <div className="mt-8">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Accent Color
-            </h3>
-            <p className="text-gray-600 dark:text-gray-300 mb-4">
-              Select your favorite team color as the accent for the application.
-            </p>
-            <div className="max-w-md">
-              <Select
-                value={settings.accentColor}
-                onValueChange={handleAccentChange}
-              >
-                <SelectTrigger className="w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12">
-                  <SelectValue placeholder="Select a team color" />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {TEAM_COLORS.map((team) => (
-                    <SelectItem key={team.color} value={team.color}>
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-4 h-4 rounded-full border border-gray-200 shadow-sm shrink-0"
-                          style={{ backgroundColor: team.color }}
-                        />
-                        <span className="truncate">{team.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="max-w-md">
+            <Label className="mb-2 block">Accent Color</Label>
+            <Select
+              value={settings.accentColor}
+              onValueChange={handleAccentChange}
+            >
+              <SelectTrigger className="w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12">
+                <SelectValue placeholder="Select a team color" />
+              </SelectTrigger>
+              <SelectContent className="max-h-64">
+                {TEAM_COLORS.map((team) => (
+                  <SelectItem key={team.color} value={team.color}>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full border border-gray-200 shadow-sm shrink-0"
+                        style={{ backgroundColor: team.color }}
+                      />
+                      <span className="truncate">{team.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </section>
 
-        {/* Beam Threshold Settings */}
+        {/* Threshold Configuration */}
         <section
           id="beam-threshold-settings"
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-            Beam Threshold Values
-          </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            Configure threshold values for each beam type. These values determine when checks pass,
-            fail, or show warnings.
-          </p>
-
-          <div className="space-y-8">
-            {(Object.keys(settings.thresholds) as Array<keyof BeamThresholds>).map((beamId) => (
-              <div
-                key={beamId}
-                className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
-              >
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  {BEAM_NAMES[beamId]}
-                </h3>
-                <div className="space-y-4">
-                  {(Object.keys(settings.thresholds[beamId]) as Array<
-                    'outputChange' | 'uniformityChange' | 'centerShift'
-                  >).map((metric) => (
-                    <div key={metric} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="flex items-center">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[180px]">
-                          {METRIC_NAMES[metric]}:
-                        </label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-500 dark:text-gray-400">Min:</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={settings.thresholds[beamId][metric].min}
-                          onChange={(e) =>
-                            handleThresholdChange(
-                              beamId,
-                              metric,
-                              'min',
-                              parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="w-24 bg-white dark:bg-gray-800"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-500 dark:text-gray-400">Max:</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={settings.thresholds[beamId][metric].max}
-                          onChange={(e) =>
-                            handleThresholdChange(
-                              beamId,
-                              metric,
-                              'max',
-                              parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="w-24 bg-white dark:bg-gray-800"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                Threshold Configuration
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300 mt-1">
+                Manage pass/fail tolerances for beam and geometry checks.
+              </p>
+            </div>
+            {thresholdSuccess && (
+              <span className="text-green-600 font-medium animate-pulse">{thresholdSuccess}</span>
+            )}
           </div>
+
+          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+            <CardHeader>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Check Type</Label>
+                  <Select value={checkType} onValueChange={(val: 'beam' | 'geometry') => setCheckType(val)}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="beam">Beam Check</SelectItem>
+                      <SelectItem value="geometry">Geometry Check</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {checkType === 'beam' && (
+                  <div>
+                    <Label>Beam Variant</Label>
+                    <Select value={beamVariant} onValueChange={setBeamVariant}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BEAM_VARIANTS.map(v => (
+                          <SelectItem key={v} value={v}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className={`space-y-6 ${totalPages > 1 ? 'min-h-[400px]' : ''}`}>
+                {currentMetrics.map(([key, label]) => (
+                  <div key={key} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border rounded-md border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+                    <Label className="flex-1 text-base">{label}</Label>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-500">Tolerance (±)</span>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        className="w-32 bg-white dark:bg-gray-950"
+                        value={getThresholdValue(key)}
+                        onChange={(e) => updateThresholdValue(key, parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <div className="text-sm text-gray-500">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="flex justify-end gap-3 pt-6">
+              <Button
+                onClick={handleSaveThresholds}
+                disabled={savingThresholds || loadingThresholds}
+                className="w-full md:w-auto"
+              >
+                {savingThresholds ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </CardFooter>
+          </Card>
         </section>
 
         {/* Graph Threshold Settings */}
@@ -411,10 +564,6 @@ export default function SettingsPage() {
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
             Graph Threshold Settings
           </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            Configure the threshold visualization for graphs in the result detail page.
-          </p>
-
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -477,11 +626,6 @@ export default function SettingsPage() {
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Baseline Settings</h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            Choose how graph baselines are defined. Baselines appear as a horizontal line on result graphs, and metric
-            values are plotted as their change relative to this baseline.
-          </p>
-
           <div className="space-y-6">
             <RadioGroup
               value={settings.baseline.mode}
@@ -508,7 +652,6 @@ export default function SettingsPage() {
                     date={settings.baseline.date ? new Date(settings.baseline.date) : undefined}
                     setDate={(date) => {
                       if (date) {
-                        // Adjust for timezone offset to ensure YYYY-MM-DD matches local selection
                         const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
                         const isoDate = offsetDate.toISOString().split('T')[0];
                         handleBaselineDateChange(isoDate);
@@ -520,9 +663,6 @@ export default function SettingsPage() {
                     Use Today
                   </Button>
                 </div>
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Graph values will show the difference from measurements captured on this date.
-                </p>
               </div>
             )}
 

@@ -266,6 +266,81 @@ export const fetchGeoChecks = async (params: FetchGeoChecksParams): Promise<GeoC
   }
 };
 
+// Threshold API
+export interface Threshold {
+  id?: string;
+  machineId: string;
+  checkType: 'geometry' | 'beam';
+  beamVariant?: string;
+  metricType: string;
+  value: number;
+  lastUpdated?: string;
+}
+
+export const fetchThresholds = async (): Promise<Threshold[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/thresholds/all`;
+      return toCamelCase(await safeFetch(url));
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase.from('thresholds').select('*');
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[fetchThresholds] Error:', err);
+    throw err;
+  }
+};
+
+export const saveThreshold = async (threshold: Threshold): Promise<Threshold> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/thresholds`;
+      const data = await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(threshold),
+      });
+      return toCamelCase(data);
+    }
+
+    if (supabase) {
+      // Upsert logic for Supabase
+      // Assuming 'machine_id', 'check_type', 'beam_variant', 'metric_type' composite unique key or similar
+      // We need to convert camelCase back to snake_case for Supabase if needed, but existing code seems to expect snake_case in DB
+      // We will do a best effort mapping here
+      const dbPayload = {
+        machine_id: threshold.machineId,
+        check_type: threshold.checkType,
+        beam_variant: threshold.beamVariant,
+        metric_type: threshold.metricType,
+        value: threshold.value,
+        last_updated: new Date().toISOString(),
+        ...(threshold.id ? { id: threshold.id } : {})
+      };
+
+      const { data, error } = await supabase
+        .from('thresholds')
+        .upsert(dbPayload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+
+    throw new Error('No API or Supabase configured');
+  } catch (err) {
+    console.error('[saveThreshold] Error:', err);
+    throw err;
+  }
+};
+
 // Error handling wrapper
 export const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
