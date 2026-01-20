@@ -300,6 +300,7 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
                         variant="ghost"
                         size="icon"
                         title="Close graph"
+                        aria-label="Close graph"
                     >
                         <X className="w-5 h-5" />
                     </Button>

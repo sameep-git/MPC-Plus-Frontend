@@ -25,6 +25,7 @@ export const CheckGroup: React.FC<CheckGroupProps> = ({
         <div className={className}>
             <Button
                 variant="ghost"
+                aria-expanded={isExpanded}
                 onClick={() => onToggle(id)}
                 className="w-full flex items-center justify-between p-3 h-auto hover:bg-gray-50"
             >

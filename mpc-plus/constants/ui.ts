@@ -40,7 +40,7 @@ export const UI_CONSTANTS = {
   
   // Status text
   STATUS: {
-    LOADING: 'Loading...',
+    LOADING: 'Loading…',
     USER: 'User',
   },
   

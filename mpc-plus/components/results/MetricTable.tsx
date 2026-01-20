@@ -29,7 +29,7 @@ export const MetricTable: React.FC<MetricTableProps> = ({
                 </TableHeader>
                 <TableBody>
                     {metrics.map((m, idx) => (
-                        <TableRow key={idx}>
+                        <TableRow key={m.name}>
                             <TableCell className="font-medium">
                                 <div className="flex items-center gap-2">
                                     {m.status === 'pass' && <div className="w-2 h-2 rounded-full bg-green-500" />}
@@ -38,6 +38,7 @@ export const MetricTable: React.FC<MetricTableProps> = ({
                                         variant="ghost"
                                         size="icon"
                                         className="h-4 w-4"
+                                        aria-label={`Toggle ${m.name} graph`}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onToggleMetric(m.name);
