@@ -8,8 +8,8 @@ export interface Beam {
   centerShift?: number;
   machineId: string;
   note?: string;
-  acceptedBy?: string;
-  acceptedDate?: string;
+  approvedBy?: string;
+  approvedDate?: string;
 }
 
 export default Beam;

@@ -448,12 +448,12 @@ paths:
         '404':
           description: Beam not found
 
-  /beams/accept:
+  /beams/approve:
     post:
       tags:
         - Beams
-      summary: Accept multiple beams
-      description: Marks multiple beams as accepted by a user
+      summary: Approve multiple beams
+      description: Marks multiple beams as approved by a user
       requestBody:
         required: true
         content:
@@ -465,14 +465,14 @@ paths:
                   type: array
                   items:
                     type: string
-                acceptedBy:
+                approvedBy:
                   type: string
               required:
                 - beamIds
-                - acceptedBy
+                - approvedBy
       responses:
         '200':
-          description: Beams accepted successfully
+          description: Beams approved successfully
           content:
             application/json:
               schema:

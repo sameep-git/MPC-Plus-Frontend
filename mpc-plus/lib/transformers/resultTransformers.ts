@@ -71,8 +71,8 @@ export const mapBeamsToResults = (loadedBeams: Beam[]): CheckResult[] => {
                 name: `Beam Check (${type})`,
                 status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
                 metrics,
-                acceptedBy: beam.acceptedBy,
-                acceptedDate: beam.acceptedDate
+                approvedBy: beam.approvedBy,
+                approvedDate: beam.approvedDate
             });
         }
     });

@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LineChart as ChartIcon } from 'lucide-react';
-import { fetchUser, handleApiError, acceptBeams } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -92,7 +92,7 @@ function ResultDetailPageContent() {
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));
   const [isSignOffModalOpen, setIsSignOffModalOpen] = useState(false);
   const [signOffSelectedChecks, setSignOffSelectedChecks] = useState<Set<string>>(new Set());
-  const [isAccepting, setIsAccepting] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
   // Report Modal State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -214,24 +214,24 @@ function ResultDetailPageContent() {
         alert("User not authenticated.");
         return;
       }
-      // Filter functionality: only accept selected beams
+      // Filter functionality: only approve selected beams
       const selectedBeamIds = Array.from(signOffSelectedChecks)
         .filter(id => id.startsWith('beam-'))
         .map(id => id.replace('beam-', ''));
 
       if (selectedBeamIds.length === 0) return;
 
-      setIsAccepting(true);
-      await acceptBeams(selectedBeamIds, user.name || user.id);
+      setIsApproving(true);
+      await approveBeams(selectedBeamIds, user.name || user.id);
       setIsSignOffModalOpen(false);
       refresh();
-      // Reset selection after accept
+      // Reset selection after approve
       setSignOffSelectedChecks(new Set());
     } catch (err) {
-      console.error("Accept failed", err);
+      console.error("Approve failed", err);
       alert(handleApiError(err));
     } finally {
-      setIsAccepting(false);
+      setIsApproving(false);
     }
   };
 
@@ -427,7 +427,7 @@ function ResultDetailPageContent() {
               // Check if ALL beams are accepted
               const allAccepted = beams.length > 0 && beams.every(b => {
                 const res = beamResults.find(cr => cr.id === b.id);
-                return !!res?.acceptedBy;
+                return !!res?.approvedBy;
               });
 
               if (allAccepted) {
@@ -438,10 +438,10 @@ function ResultDetailPageContent() {
                   const utc = d.endsWith('Z') ? d : `${d}Z`;
                   return new Date(utc).toLocaleString();
                 };
-                const timestamp = formatTime(firstAccepted?.acceptedDate);
+                const timestamp = formatTime(firstAccepted?.approvedDate);
                 return (
                   <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-md text-sm italic h-11">
-                    Accepted by {firstAccepted?.acceptedBy} on {timestamp}
+                    Approved by {firstAccepted?.approvedBy} on {timestamp}
                   </div>
                 );
               }
@@ -452,7 +452,7 @@ function ResultDetailPageContent() {
                   size="lg"
                   variant="default"
                 >
-                  Accept Results
+                  Approve Results
                 </Button>
               );
             })()}
@@ -585,12 +585,12 @@ function ResultDetailPageContent() {
       <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Accept Results</DialogTitle>
+            <DialogTitle>Approve Results</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Select Beams to Accept</Label>
+                <Label>Select Beams to Approve</Label>
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="select-all-accept-checks"
@@ -607,24 +607,24 @@ function ResultDetailPageContent() {
               </div>
               <div className="border rounded-md h-[200px] overflow-y-auto space-y-2 p-2">
                 {beamResults.map(check => {
-                  const isAccepted = !!check.acceptedBy;
+                  const isApproved = !!check.approvedBy;
                   return (
                     <div key={check.id} className="flex flex-col p-1 hover:bg-gray-50 rounded">
                       <div className="flex items-center space-x-2">
                         <Checkbox
                           id={`accept-${check.id}`}
-                          checked={isAccepted || signOffSelectedChecks.has(check.id)}
-                          disabled={isAccepted}
-                          onCheckedChange={() => !isAccepted && toggleSignOffCheck(check.id)}
+                          checked={isApproved || signOffSelectedChecks.has(check.id)}
+                          disabled={isApproved}
+                          onCheckedChange={() => !isApproved && toggleSignOffCheck(check.id)}
                         />
-                        <label htmlFor={`accept-${check.id}`} className={`text-sm w-full ${isAccepted ? 'text-gray-500 cursor-default' : 'cursor-pointer'}`}>
+                        <label htmlFor={`accept-${check.id}`} className={`text-sm w-full ${isApproved ? 'text-gray-500 cursor-default' : 'cursor-pointer'}`}>
                           {check.name}
                         </label>
                       </div>
-                      {isAccepted && (
+                      {isApproved && (
                         <div className="ml-6 text-xs text-gray-400 italic">
-                          Accepted by {check.acceptedBy} on {(() => {
-                            const d = check.acceptedDate;
+                          Approved by {check.approvedBy} on {(() => {
+                            const d = check.approvedDate;
                             if (!d) return '';
                             const utc = d.endsWith('Z') ? d : `${d}Z`;
                             return new Date(utc).toLocaleString();
@@ -634,14 +634,14 @@ function ResultDetailPageContent() {
                     </div>
                   )
                 })}
-                {beamResults.length === 0 && <div className="text-sm text-gray-400">No beams to accept.</div>}
+                {beamResults.length === 0 && <div className="text-sm text-gray-400">No beams to approve.</div>}
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSignOffModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSignOff} disabled={isAccepting}>
-              {isAccepting ? 'Accepting...' : 'Confirm Acceptance'}
+            <Button onClick={handleSignOff} disabled={isApproving}>
+              {isApproving ? 'Approving...' : 'Confirm Approval'}
             </Button>
           </DialogFooter>
         </DialogContent>

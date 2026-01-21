@@ -188,14 +188,14 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
   }
 };
 
-export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promise<BeamType[]> => {
+export const approveBeams = async (beamIds: string[], approvedBy: string): Promise<BeamType[]> => {
   try {
     if (API_BASE) {
-      const url = `${API_BASE.replace(/\/$/, '')}/beams/accept`;
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/approve`;
       const data = await safeFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beamIds, acceptedBy })
+        body: JSON.stringify({ beamIds, approvedBy })
       });
       return toCamelCase(data);
     }
@@ -208,8 +208,8 @@ export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promis
       const { data, error } = await supabase
         .from('beams')
         .update({
-          accepted_by: acceptedBy,
-          accepted_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+          approved_by: approvedBy,
+          approved_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
         })
         .in('id', beamIds)
         .select();
@@ -220,7 +220,7 @@ export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promis
 
     return [];
   } catch (err) {
-    console.error('[acceptBeams] Error:', err);
+    console.error('[approveBeams] Error:', err);
     throw err;
   }
 };
