@@ -12,7 +12,7 @@ export const TEAM_COLORS = [
     { name: "Tennessee Volunteers", color: "#FF8200" },
     { name: "Clemson Tigers", color: "#F56600" },
     { name: "Florida State Seminoles", color: "#782F40" },
-    { name: "Oklahoma Sooners", color: "#841617" },
+    { name: "Oklahoma State Cowboys", color: "#FF7300" },
     { name: "Notre Dame Fighting Irish", color: "#0C2340" },
     { name: "USC Trojans", color: "#990000" },
     { name: "Penn State Nittany Lions", color: "#041E42" },
