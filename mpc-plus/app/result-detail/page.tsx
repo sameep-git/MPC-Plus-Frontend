@@ -3,7 +3,7 @@
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { LineChart as ChartIcon } from 'lucide-react';
+import { LineChart as ChartIcon, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 import { fetchUser, handleApiError, approveBeams } from '../../lib/api';
 import {
   Navbar,
@@ -91,8 +91,10 @@ function ResultDetailPageContent() {
   // UI State
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));
   const [isSignOffModalOpen, setIsSignOffModalOpen] = useState(false);
-  const [signOffSelectedChecks, setSignOffSelectedChecks] = useState<Set<string>>(new Set());
+  // Removed signOffSelectedChecks as we now approve all after viewing
   const [isApproving, setIsApproving] = useState(false);
+  const [approvalCurrentIndex, setApprovalCurrentIndex] = useState(0);
+  const [approvalVisitedIndices, setApprovalVisitedIndices] = useState<Set<number>>(new Set([0]));
 
   // Report Modal State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -152,7 +154,7 @@ function ResultDetailPageContent() {
     setGraphDateRange({ start, end });
   };
 
-  // Sign Off / Accept Logic (Kept local for now)
+  // --- Report Helpers ---
   const availableReportChecks = useMemo(() => [
     ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' })),
     ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' }))
@@ -162,10 +164,6 @@ function ResultDetailPageContent() {
     if (availableReportChecks.length > 0) {
       // Default report selection: all
       setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
-
-      // Default signoff selection: all BEAMS (checking if they are already accepted is handled in render)
-      const beamIds = availableReportChecks.filter(c => c.type === 'beam').map(c => c.id);
-      setSignOffSelectedChecks(new Set(beamIds));
     }
   }, [availableReportChecks]);
 
@@ -180,16 +178,6 @@ function ResultDetailPageContent() {
     }
   };
 
-  const isAllSignOffChecksSelected = availableReportChecks.length > 0 && signOffSelectedChecks.size === availableReportChecks.length;
-
-  const toggleAllSignOffChecks = (checked: boolean) => {
-    if (checked) {
-      setSignOffSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
-    } else {
-      setSignOffSelectedChecks(new Set());
-    }
-  };
-
   const toggleReportCheck = (id: string) => {
     setReportSelectedChecks(prev => {
       const next = new Set(prev);
@@ -199,34 +187,55 @@ function ResultDetailPageContent() {
     });
   };
 
-  const toggleSignOffCheck = (id: string) => {
-    setSignOffSelectedChecks(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // --- Approval Modal Handlers ---
+  const openApprovalModal = () => {
+    setApprovalCurrentIndex(0);
+    setApprovalVisitedIndices(new Set([0]));
+    setIsSignOffModalOpen(true);
   };
 
-  const handleSignOff = async () => {
+  const handleNextBeam = () => {
+    const nextIndex = approvalCurrentIndex + 1;
+    // Filter out already approved beams to know the true length of what we are approving?
+    // The requirement says "visit every beam type".
+    // We will iterate through `beamResults`.
+    if (nextIndex < beamResults.length) {
+      setApprovalCurrentIndex(nextIndex);
+      setApprovalVisitedIndices(prev => {
+        const next = new Set(prev);
+        next.add(nextIndex);
+        return next;
+      });
+    }
+  };
+
+  const handlePrevBeam = () => {
+    if (approvalCurrentIndex > 0) {
+      setApprovalCurrentIndex(approvalCurrentIndex - 1);
+    }
+  };
+
+  const handleApproveAll = async () => {
     try {
       if (!user) {
         alert("User not authenticated.");
         return;
       }
-      // Filter functionality: only approve selected beams
-      const selectedBeamIds = Array.from(signOffSelectedChecks)
-        .filter(id => id.startsWith('beam-'))
-        .map(id => id.replace('beam-', ''));
 
-      if (selectedBeamIds.length === 0) return;
+      // Collect ALL beam IDs that are NOT yet approved
+      const beamsToApprove = beamResults
+        .filter(b => !b.approvedBy)
+        .map(b => b.id.replace('beam-', ''));
+
+      if (beamsToApprove.length === 0) {
+        setIsSignOffModalOpen(false);
+        return;
+      }
 
       setIsApproving(true);
-      await approveBeams(selectedBeamIds, user.name || user.id);
+      await approveBeams(beamsToApprove, user.name || user.id);
       setIsSignOffModalOpen(false);
       refresh();
-      // Reset selection after approve
-      setSignOffSelectedChecks(new Set());
     } catch (err) {
       console.error("Approve failed", err);
       alert(handleApiError(err));
@@ -448,7 +457,7 @@ function ResultDetailPageContent() {
 
               return (
                 <Button
-                  onClick={() => setIsSignOffModalOpen(true)}
+                  onClick={openApprovalModal}
                   size="lg"
                   variant="default"
                 >
@@ -581,68 +590,77 @@ function ResultDetailPageContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Sign Off Modal */}
+      {/* Sign Off Modal (Paginated) */}
       <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[700px] h-[600px] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Approve Results</DialogTitle>
+            <DialogTitle>Approve Results ({approvalCurrentIndex + 1} of {beamResults.length})</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Select Beams to Approve</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="select-all-accept-checks"
-                    checked={isAllSignOffChecksSelected}
-                    onCheckedChange={(c) => toggleAllSignOffChecks(c as boolean)}
-                  />
-                  <label
-                    htmlFor="select-all-accept-checks"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    Select All
-                  </label>
-                </div>
-              </div>
-              <div className="border rounded-md h-[200px] overflow-y-auto space-y-2 p-2">
-                {beamResults.map(check => {
-                  const isApproved = !!check.approvedBy;
-                  return (
-                    <div key={check.id} className="flex flex-col p-1 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`accept-${check.id}`}
-                          checked={isApproved || signOffSelectedChecks.has(check.id)}
-                          disabled={isApproved}
-                          onCheckedChange={() => !isApproved && toggleSignOffCheck(check.id)}
-                        />
-                        <label htmlFor={`accept-${check.id}`} className={`text-sm w-full ${isApproved ? 'text-gray-500 cursor-default' : 'cursor-pointer'}`}>
-                          {check.name}
-                        </label>
-                      </div>
-                      {isApproved && (
-                        <div className="ml-6 text-xs text-gray-400 italic">
-                          Approved by {check.approvedBy} on {(() => {
-                            const d = check.approvedDate;
-                            if (!d) return '';
-                            const utc = d.endsWith('Z') ? d : `${d}Z`;
-                            return new Date(utc).toLocaleString();
-                          })()}
-                        </div>
-                      )}
+
+          <div className="flex-1 overflow-y-auto py-4">
+            {beamResults.length > 0 && (() => {
+              const currentBeam = beamResults[approvalCurrentIndex];
+              const isPass = currentBeam.status === 'PASS';
+              return (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between border-b pb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold">{currentBeam.name}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Review data carefully before approving.
+                      </p>
                     </div>
-                  )
-                })}
-                {beamResults.length === 0 && <div className="text-sm text-gray-400">No beams to approve.</div>}
-              </div>
-            </div>
+                    <div className={`flex items-center px-3 py-1 rounded-full text-sm font-medium ${isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {isPass ? <CheckCircle2 className="w-4 h-4 mr-1.5" /> : <XCircle className="w-4 h-4 mr-1.5" />}
+                      {currentBeam.status}
+                    </div>
+                  </div>
+
+                  {/* Reusing MetricTable logic but inline or we can just render the component */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <MetricTable
+                      metrics={currentBeam.metrics}
+                      selectedMetrics={new Set()}
+                      onToggleMetric={() => { }} // No graphing in modal
+                      showAbsolute={true}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+            {beamResults.length === 0 && <div className="text-center text-muted-foreground mt-10">No results to show.</div>}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSignOffModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSignOff} disabled={isApproving}>
-              {isApproving ? 'Approving...' : 'Confirm Approval'}
-            </Button>
+
+          <DialogFooter className="flex items-center justify-between sm:justify-between w-full mt-auto border-t pt-4">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handlePrevBeam}
+                disabled={approvalCurrentIndex === 0}
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleNextBeam}
+                disabled={approvalCurrentIndex === beamResults.length - 1}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setIsSignOffModalOpen(false)}>Cancel</Button>
+              <Button
+                onClick={handleApproveAll}
+                disabled={isApproving || approvalVisitedIndices.size < beamResults.length}
+                variant={approvalVisitedIndices.size < beamResults.length ? "secondary" : "default"}
+              >
+                {isApproving ? 'Approving...' : 'Approve All'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
