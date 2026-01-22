@@ -61,6 +61,9 @@ export interface GeoCheck {
     mlcBacklashA?: Record<string, number>;
     mlcBacklashB?: Record<string, number>;
 
+    // Metric Statuses
+    metricStatuses?: Record<string, string>;
+
     note?: string;
     createdAt?: string;
     updatedAt?: string;

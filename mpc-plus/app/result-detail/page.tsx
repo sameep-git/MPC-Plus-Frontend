@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LineChart as ChartIcon, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, fetchThresholds, type Threshold } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -18,6 +18,7 @@ import {
 } from '../../components/ui';
 import { UI_CONSTANTS } from '../../constants';
 // Hooks
+// Hooks
 import { useResultDetailData } from '../../hooks/useResultDetailData';
 import { useGraphData } from '../../hooks/useGraphData';
 import { mapBeamsToResults, mapGeoCheckToResults } from '../../lib/transformers/resultTransformers';
@@ -28,10 +29,12 @@ import { CheckGroup } from '../../components/results/CheckGroup';
 import { GraphSection } from '../../components/results/GraphSection';
 // Models & Utils
 import type { DateRange } from "react-day-picker";
+import { useThresholds } from '../../lib/context/ThresholdContext';
 
 function ResultDetailPageContent() {
   // --- State & Hooks ---
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
+  const { thresholds } = useThresholds();
 
   // Data Hook
   // Data Hook (Date management only)
@@ -78,15 +81,15 @@ function ResultDetailPageContent() {
     // Ensure we match date string format YYYY-MM-DD
     const isoDate = selectedDate.toISOString().split('T')[0];
     const daysBeams = allBeams.filter(b => b.date === isoDate);
-    return mapBeamsToResults(daysBeams);
-  }, [allBeams, selectedDate]);
+    return mapBeamsToResults(daysBeams, thresholds);
+  }, [allBeams, selectedDate, thresholds]);
 
   const geoResults = useMemo(() => {
     if (!allGeoChecks || allGeoChecks.length === 0) return [];
     const isoDate = selectedDate.toISOString().split('T')[0];
     const daysGeo = allGeoChecks.find(g => g.date === isoDate);
-    return daysGeo ? mapGeoCheckToResults(daysGeo) : [];
-  }, [allGeoChecks, selectedDate]);
+    return daysGeo ? mapGeoCheckToResults(daysGeo, thresholds) : [];
+  }, [allGeoChecks, selectedDate, thresholds]);
 
   // UI State
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));
@@ -105,6 +108,7 @@ function ResultDetailPageContent() {
   // --- Effects ---
   useEffect(() => {
     fetchUser().then(setUser).catch(console.error);
+    // Thresholds now handled by context
   }, []);
 
   // --- Handlers ---
@@ -327,6 +331,7 @@ function ResultDetailPageContent() {
                   key={check.id}
                   id={check.id}
                   title={check.name}
+                  status={check.status}
                   isExpanded={expandedChecks.has(check.id)}
                   onToggle={toggleCheckExpand}
                 >
@@ -356,6 +361,7 @@ function ResultDetailPageContent() {
                         key={check.id}
                         id={check.id}
                         title={check.name}
+                        status={check.status}
                         isExpanded={expandedChecks.has(check.id)}
                         onToggle={toggleCheckExpand}
                       >
@@ -384,6 +390,7 @@ function ResultDetailPageContent() {
                         key={check.id}
                         id={check.id}
                         title={check.name}
+                        status={check.status}
                         isExpanded={expandedChecks.has(check.id)}
                         onToggle={toggleCheckExpand}
                       >

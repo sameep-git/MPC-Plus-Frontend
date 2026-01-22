@@ -10,6 +10,12 @@ export interface Beam {
   note?: string;
   approvedBy?: string;
   approvedDate?: string;
+
+  // Status fields from backend
+  status?: string;
+  relOutputStatus?: string;
+  relUniformityStatus?: string;
+  centerShiftStatus?: string;
 }
 
 export default Beam;

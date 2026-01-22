@@ -16,10 +16,17 @@ const toCamelCase = (obj: any): any => {
     return obj.map(v => toCamelCase(v));
   } else if (obj !== null && obj.constructor === Object) {
     return Object.keys(obj).reduce(
-      (result, key) => ({
-        ...result,
-        [key.charAt(0).toLowerCase() + key.slice(1)]: toCamelCase(obj[key]),
-      }),
+      (result, key) => {
+        // Handle snake_case to camelCase conversion
+        const camelKey = key.replace(/_([a-z0-9])/g, (match, letter) => letter.toUpperCase());
+        // Handle PascalCase to camelCase conversion
+        const finalKey = camelKey.charAt(0).toLowerCase() + camelKey.slice(1);
+
+        return {
+          ...result,
+          [finalKey]: toCamelCase(obj[key]),
+        };
+      },
       {}
     );
   }

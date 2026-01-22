@@ -38,6 +38,7 @@ import {
   type BaselineMode,
   type BaselineManualValues,
 } from '../../lib/settings';
+import { useThresholds } from '../../lib/context/ThresholdContext';
 
 const BEAM_METRICS = {
   'Relative Output': 'Relative Output (%)',
@@ -107,7 +108,7 @@ const SETTINGS_SECTIONS = [
   { id: 'baseline-settings', label: 'Baseline' },
 ] as const;
 
-const BEAM_VARIANTS = ['6x', '6xff', '10x', '15x', '6e', '9e', '12e', '16e']; // Common variants
+const BEAM_VARIANTS = ['2.5x', '6x', '6xFFF', '10x', '15x', '6e', '9e', '12e', '16e']; // Common variants
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -126,6 +127,10 @@ export default function SettingsPage() {
   const [loadingThresholds, setLoadingThresholds] = useState(false);
   const [savingThresholds, setSavingThresholds] = useState(false);
   const [thresholdSuccess, setThresholdSuccess] = useState<string | null>(null);
+
+  // Geo-specific UI state
+  const [geoInputMode, setGeoInputMode] = useState<'easy' | 'manual'>('easy');
+  const [easyThresholdValue, setEasyThresholdValue] = useState<number>(2.0);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -165,6 +170,8 @@ export default function SettingsPage() {
     loadUser();
     loadData();
   }, []);
+
+  const { refreshThresholds } = useThresholds();
 
   // Handle browser back button to navigate to calendar (results) page
   useEffect(() => {
@@ -301,13 +308,17 @@ export default function SettingsPage() {
   };
 
   const updateThresholdValue = (metric: string, value: number) => {
+    console.log('[updateThresholdValue] Called with:', { metric, value, selectedMachineId, checkType, beamVariant });
     setThresholds((prev) => {
+      console.log('[updateThresholdValue] Current thresholds sample:', prev.slice(0, 3).map(t => ({ machineId: t.machineId, checkType: t.checkType, metricType: t.metricType, value: t.value })));
       const existingIndex = prev.findIndex(
         (t) =>
+          t.machineId === selectedMachineId &&
           t.checkType === checkType &&
           t.metricType === metric &&
           (checkType === 'beam' ? t.beamVariant === beamVariant : true)
       );
+      console.log('[updateThresholdValue] Found existing at index:', existingIndex);
 
       const newItem: Threshold = {
         id: existingIndex >= 0 ? prev[existingIndex].id : undefined,
@@ -330,49 +341,134 @@ export default function SettingsPage() {
   };
 
   const handleSaveThresholds = async () => {
+    console.log('[handleSaveThresholds] Starting with thresholds count:', thresholds.length);
     setSavingThresholds(true);
     setThresholdSuccess(null);
     try {
-      // Find all thresholds relevant to current selection and save them
-      // In a real app we might verify what actually changed, but here we just upsert the current view's metrics
-      const metricsToSave = Object.keys(activeMetrics);
-
-      for (const metric of metricsToSave) {
-        const threshold = thresholds.find(
-          (t) =>
-            t.machineId === selectedMachineId &&
-            t.checkType === checkType &&
-            t.metricType === metric &&
-            (checkType === 'beam' ? t.beamVariant === beamVariant : true)
-        );
-
-        if (threshold) {
-          await saveThreshold(threshold);
-        } else {
-          // Create new if strictly needed, but updateThresholdValue handles adding to state,
-          // so it should be in 'thresholds' array if user edited it.
-          // If user simply views and clicks save without editing, updateThresholdValue wasn't called.
-          // But we might want to save defaults? 
-          // Let's assume user edited or we just save what is in state.
-          // If it's not in state, it means it's 0 (default from getThresholdValue) AND user never touched it.
-          // We can construct it and save.
-          const val = getThresholdValue(metric);
+      // In geometry easy mode, use easyThresholdValue for ALL geo metrics
+      if (checkType === 'geometry' && geoInputMode === 'easy') {
+        const metricsToSave = Object.keys(GEO_METRICS);
+        for (const metric of metricsToSave) {
+          console.log('[handleSaveThresholds] Easy mode - saving:', { metric, value: easyThresholdValue });
           const newItem: Threshold = {
             machineId: selectedMachineId,
-            checkType,
+            checkType: 'geometry',
             metricType: metric,
-            beamVariant: checkType === 'beam' ? beamVariant : undefined,
-            value: val, // which is 0 if not found
+            beamVariant: undefined,
+            value: easyThresholdValue,
           };
           await saveThreshold(newItem);
         }
+      } else {
+        // Normal mode - save individual thresholds from state
+        const metricsToSave = Object.keys(activeMetrics);
+
+        for (const metric of metricsToSave) {
+          const threshold = thresholds.find(
+            (t) =>
+              t.machineId === selectedMachineId &&
+              t.checkType === checkType &&
+              t.metricType === metric &&
+              (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+          );
+
+          if (threshold) {
+            console.log('[handleSaveThresholds] Saving threshold:', { metric, value: threshold.value, id: threshold.id });
+            await saveThreshold(threshold);
+          } else {
+            const val = getThresholdValue(metric);
+            console.log('[handleSaveThresholds] Creating new threshold:', { metric, value: val });
+            const newItem: Threshold = {
+              machineId: selectedMachineId,
+              checkType,
+              metricType: metric,
+              beamVariant: checkType === 'beam' ? beamVariant : undefined,
+              value: val,
+            };
+            await saveThreshold(newItem);
+          }
+        }
       }
+
+      // Refresh thresholds from server to ensure UI is in sync
+      await refreshThresholds();
+      const updatedThresholds = await fetchThresholds();
+      setThresholds(updatedThresholds);
 
       setThresholdSuccess('Thresholds updated successfully!');
       setTimeout(() => setThresholdSuccess(null), 3000);
     } catch (error) {
       console.error('Failed to save thresholds', error);
       setError('Failed to save thresholds');
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
+
+  // Save current metric values to ALL beam variants
+  const handleSaveForAllBeams = async () => {
+    setSavingThresholds(true);
+    setThresholdSuccess(null);
+    try {
+      const metricsToSave = Object.keys(BEAM_METRICS);
+      for (const variant of BEAM_VARIANTS) {
+        for (const metric of metricsToSave) {
+          // Use the value from the CURRENT beamVariant as the template
+          const val = getThresholdValue(metric);
+          const newItem: Threshold = {
+            machineId: selectedMachineId,
+            checkType: 'beam',
+            metricType: metric,
+            beamVariant: variant,
+            value: val,
+          };
+          await saveThreshold(newItem);
+        }
+      }
+      // Refresh thresholds after bulk save
+      await refreshThresholds();
+      const updatedThresholds = await fetchThresholds();
+      setThresholds(updatedThresholds);
+      setThresholdSuccess('Thresholds applied to all beam variants!');
+      setTimeout(() => setThresholdSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to save thresholds for all beams', error);
+      setError('Failed to save thresholds for all beams');
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
+
+  // Save current metric values to ALL geo metrics (no variants)
+  // In easy mode, use easyThresholdValue for all metrics
+  const handleSaveForAllGeoChecks = async () => {
+    setSavingThresholds(true);
+    setThresholdSuccess(null);
+    try {
+      const metricsToSave = Object.keys(GEO_METRICS);
+      // In easy mode, use the single easyThresholdValue for all metrics
+      const valueToSave = geoInputMode === 'easy' ? easyThresholdValue : null;
+
+      for (const metric of metricsToSave) {
+        const val = valueToSave !== null ? valueToSave : getThresholdValue(metric);
+        const newItem: Threshold = {
+          machineId: selectedMachineId,
+          checkType: 'geometry',
+          metricType: metric,
+          beamVariant: undefined,
+          value: val,
+        };
+        await saveThreshold(newItem);
+      }
+      // Refresh thresholds after bulk save
+      await refreshThresholds();
+      const updatedThresholds = await fetchThresholds();
+      setThresholds(updatedThresholds);
+      setThresholdSuccess('All geometry thresholds saved!');
+      setTimeout(() => setThresholdSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to save all geometry thresholds', error);
+      setError('Failed to save all geometry thresholds');
     } finally {
       setSavingThresholds(false);
     }
@@ -527,26 +623,79 @@ export default function SettingsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className={`space-y-6 ${totalPages > 1 ? 'min-h-[400px]' : ''}`}>
-                {currentMetrics.map(([key, label]) => (
-                  <div key={key} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border rounded-md border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
-                    <Label className="flex-1 text-base">{label}</Label>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500">Tolerance (±)</span>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        className="w-32 bg-white dark:bg-gray-950"
-                        value={getThresholdValue(key)}
-                        onChange={(e) => updateThresholdValue(key, parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {/* Mode tabs for geometry */}
+              {checkType === 'geometry' && (
+                <div className="mb-6 flex gap-2">
+                  <Button
+                    variant={geoInputMode === 'easy' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setGeoInputMode('easy')}
+                  >
+                    Easy
+                  </Button>
+                  <Button
+                    variant={geoInputMode === 'manual' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setGeoInputMode('manual')}
+                  >
+                    Manual
+                  </Button>
+                </div>
+              )}
 
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
+              {/* Easy mode for geometry */}
+              {checkType === 'geometry' && geoInputMode === 'easy' && (
+                <div className="p-6 border rounded-lg border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                  <Label className="text-lg font-medium mb-4 block">Default Tolerance for All Geometry Checks</Label>
+                  <p className="text-sm text-gray-500 mb-4">
+                    This value will be applied to all geometry metrics when saved.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-500">Tolerance (±)</span>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      className="w-32 bg-white dark:bg-gray-950"
+                      value={easyThresholdValue || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEasyThresholdValue(val === '' ? 0 : parseFloat(val));
+                      }}
+                      placeholder="2.0"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Manual mode or Beam checks - show individual metrics */}
+              {(checkType === 'beam' || (checkType === 'geometry' && geoInputMode === 'manual')) && (
+                <>
+                  <div className={`space-y-6 ${totalPages > 1 ? 'min-h-[400px]' : ''}`}>
+                    {currentMetrics.map(([key, label]) => (
+                      <div key={key} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border rounded-md border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+                        <Label className="flex-1 text-base">{label}</Label>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-500">Tolerance (±)</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            className="w-32 bg-white dark:bg-gray-950"
+                            value={getThresholdValue(key) || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateThresholdValue(key, val === '' ? 0 : parseFloat(val));
+                            }}
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Pagination Controls - only show in manual mode or for beams */}
+              {(checkType === 'beam' || geoInputMode === 'manual') && totalPages > 1 && (
                 <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
                   <div className="text-sm text-gray-500">
                     Page {currentPage} of {totalPages}
@@ -572,11 +721,19 @@ export default function SettingsPage() {
                 </div>
               )}
             </CardContent>
-            <CardFooter className="flex justify-end gap-3 pt-6">
+            <CardFooter className="flex flex-wrap justify-end gap-3 pt-6">
+              {checkType === 'beam' && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveForAllBeams}
+                  disabled={savingThresholds || loadingThresholds}
+                >
+                  {savingThresholds ? 'Saving...' : 'Save for All Beams'}
+                </Button>
+              )}
               <Button
                 onClick={handleSaveThresholds}
                 disabled={savingThresholds || loadingThresholds}
-                className="w-full md:w-auto"
               >
                 {savingThresholds ? 'Saving...' : 'Save Changes'}
               </Button>
@@ -729,7 +886,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </main >
+    </div >
   );
 }
