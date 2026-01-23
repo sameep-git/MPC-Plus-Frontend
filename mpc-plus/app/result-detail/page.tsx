@@ -565,9 +565,18 @@ export default function ResultDetailPage() {
           // This prevents duplicate key errors if multiple beams of the same type exist
           const uniqueId = beam.id ? `beam-${beam.id}` : `beam-${type}-${index}`;
 
+          // Format time label if available
+          let timeLabel = '';
+          if (beam.date && beam.date.includes('T')) {
+            const timePart = beam.date.split('T')[1];
+            if (timePart && timePart.length >= 5) {
+              timeLabel = ` - ${timePart.substring(0, 5)}`;
+            }
+          }
+
           beamCheckResults.push({
             id: uniqueId,
-            name: `Beam Check (${type})`,
+            name: `Beam Check (${type})${timeLabel}`,
             status: 'PASS', // Assuming pass if data exists, logic can be enhanced if status is available
             metrics,
             acceptedBy: beam.acceptedBy,
@@ -576,8 +585,11 @@ export default function ResultDetailPage() {
         }
       });
 
-      // Sort beam results to maintain a consistent order (optional, alphanumerical)
-      beamCheckResults.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }));
+      // Sort beam results to maintain a consistent order (chronological then by type)
+      beamCheckResults.sort((a, b) => {
+        // Sort by name which usually contains the time now, or id
+        return a.name.localeCompare(b.name);
+      });
 
       setBeamResults(beamCheckResults);
 
