@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError } from '../lib/api';
 import type { Machine as MachineType } from '../models/Machine';
 import type { UpdateModel as UpdateModelType } from '../models/Update';
-import { Navbar, Button, UpdateCard } from '../components/ui';
+import { Navbar, Button } from '../components/ui';
+import { UpdateCard } from '../components/dashboard/UpdateCard';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {

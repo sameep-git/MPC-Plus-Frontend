@@ -17,6 +17,7 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
     DropdownMenuCheckboxItem,
+    Card,
 } from '../../components/ui';
 import { GRAPH_CONSTANTS } from '../../constants';
 import { getSettings } from '../../lib/settings';
@@ -245,7 +246,7 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
     };
 
     return (
-        <div className="border border-gray-200 rounded-lg p-4">
+        <Card className="p-4 gap-4">
             {/* Graph Header */}
             <div className="mb-4 flex items-center gap-2">
                 <div className="relative metric-dropdown-container">
@@ -389,6 +390,6 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
                     </LineChart>
                 </ResponsiveContainer>
             </div>
-        </div>
+        </Card>
     );
 };
