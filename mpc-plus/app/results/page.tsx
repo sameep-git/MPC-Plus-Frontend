@@ -226,11 +226,11 @@ export default function MPCResultPage() {
     return days;
   };
 
-  const getResultsForDate = (dayObj: { day: number; month: number; year: number }) => {
-    if (!monthlyResults) return null;
+  const getResultsForDate = (dayObj: { day: number; month: number; year: number }): DayCheckStatus[] => {
+    if (!monthlyResults) return [];
 
     const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-    return monthlyResults.checks.find((check: DayCheckStatus) => {
+    return monthlyResults.checks.filter((check: DayCheckStatus) => {
       // Extract just the date portion (YYYY-MM-DD) from the API response which may include timestamps
       const checkDate = check.date.split('T')[0];
       return checkDate === dateStr;
@@ -445,7 +445,7 @@ export default function MPCResultPage() {
 
               const results = getResultsForDate(dayObj);
               const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
-              const hasResults = results && (results.beamCheckStatus || results.geometryCheckStatus);
+              const hasResults = results && results.length > 0;
 
               return (
                 <div
@@ -460,30 +460,44 @@ export default function MPCResultPage() {
                     {dayObj.day}
                   </div>
 
-                  {results && (
-                    <div className="space-y-1">
-                      {results.geometryCheckStatus && (
-                        <div className={`text-xs px-2 py-1 rounded ${results.geometryCheckStatus === 'pass'
-                          ? 'bg-green-100 text-green-800'
-                          : results.geometryCheckStatus === 'warning'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                          }`}>
-                          {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
+                  <div className="space-y-1">
+                    {results.map((result, rIndex) => {
+                      // Attempt to show time, or just an index if time is same
+                      let timeLabel = '';
+                      if (result.date.includes('T')) {
+                        const timePart = result.date.split('T')[1];
+                        if (timePart) {
+                          timeLabel = timePart.substring(0, 5); // HH:MM
+                        }
+                      }
+
+                      return (
+                        <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
+                          {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
+                          {result.geometryCheckStatus && (
+                            <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus === 'pass'
+                              ? 'bg-green-100 text-green-800'
+                              : result.geometryCheckStatus === 'warning'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-red-100 text-red-800'
+                              }`}>
+                              {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
+                            </div>
+                          )}
+                          {result.beamCheckStatus && (
+                            <div className={`text-xs px-2 py-1 rounded ${result.beamCheckStatus === 'pass'
+                              ? 'bg-green-100 text-green-800'
+                              : result.beamCheckStatus === 'warning'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-red-100 text-red-800'
+                              }`}>
+                              {UI_CONSTANTS.CHECKS.BEAM_CHECK}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {results.beamCheckStatus && (
-                        <div className={`text-xs px-2 py-1 rounded ${results.beamCheckStatus === 'pass'
-                          ? 'bg-green-100 text-green-800'
-                          : results.beamCheckStatus === 'warning'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                          }`}>
-                          {UI_CONSTANTS.CHECKS.BEAM_CHECK}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
