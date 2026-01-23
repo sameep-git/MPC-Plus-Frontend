@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { fetchMachines, fetchUser, fetchResults, handleApiError, fetchBeamTypes } from '../../lib/api';
@@ -50,6 +50,11 @@ export default function MPCResultPage() {
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
   const [monthlyResults, setMonthlyResults] = useState<MonthlyResults | null>(null);
+
+  // Cache for monthly results: Key = "machineId-year-month", Value = MonthlyResults
+  const [resultsCache, setResultsCache] = useState<Record<string, MonthlyResults>>({});
+  const fetchingRef = useRef<Set<string>>(new Set());
+
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
@@ -179,22 +184,86 @@ export default function MPCResultPage() {
   useEffect(() => {
     if (selectedMachine) {
       const loadResults = async () => {
-        try {
-          setError(null);
-          const data = await fetchResults(selectedMonth + 1, selectedYear, selectedMachine.id);
-          setMonthlyResults(data);
-        } catch (err) {
-          const errorMessage = handleApiError(err);
-          setError(errorMessage);
-          console.error('Error loading results:', err);
-          setMonthlyResults(null);
-        } finally {
+        const machineId = selectedMachine.id;
+        const currentKey = `${machineId}-${selectedYear}-${selectedMonth}`;
 
+        // 1. Check Cache for Current Month
+        let currentData = resultsCache[currentKey];
+
+        if (currentData) {
+          setMonthlyResults(currentData);
+          setError(null);
+        } else {
+          // Double check in-flight to avoid duplicate current fetch
+          if (!fetchingRef.current.has(currentKey)) {
+            try {
+              fetchingRef.current.add(currentKey);
+              setError(null);
+              // Fetch current month immediately
+              const data = await fetchResults(selectedMonth + 1, selectedYear, machineId);
+
+              setMonthlyResults(data);
+              setResultsCache(prev => ({
+                ...prev,
+                [currentKey]: data
+              }));
+            } catch (err) {
+              const errorMessage = handleApiError(err);
+              setError(errorMessage);
+              console.error('Error loading results:', err);
+              setMonthlyResults(null);
+              return; // Don't prefetch if current fails
+            } finally {
+              fetchingRef.current.delete(currentKey);
+            }
+          }
         }
+
+        // 2. Prefetch Neighboring Months (+/- 3 months) in background
+        const neighbors: { m: number, y: number }[] = [];
+        for (let i = 1; i <= 3; i++) {
+          // Future
+          let nextM = selectedMonth + i;
+          let nextY = selectedYear;
+          if (nextM > 11) {
+            nextM -= 12;
+            nextY += 1;
+          }
+          neighbors.push({ m: nextM, y: nextY });
+
+          // Past
+          let prevM = selectedMonth - i;
+          let prevY = selectedYear;
+          if (prevM < 0) {
+            prevM += 12;
+            prevY -= 1;
+          }
+          neighbors.push({ m: prevM, y: prevY });
+        }
+
+        neighbors.forEach(async ({ m, y }) => {
+          const key = `${machineId}-${y}-${m}`;
+          // Check if already in cache OR currently fetching
+          if (!resultsCache[key] && !fetchingRef.current.has(key)) {
+            try {
+              fetchingRef.current.add(key);
+              const data = await fetchResults(m + 1, y, machineId);
+              setResultsCache(prev => ({
+                ...prev,
+                [key]: data
+              }));
+            } catch (e) {
+              console.warn(`Failed to prefetch ${key}`, e);
+            } finally {
+              fetchingRef.current.delete(key);
+            }
+          }
+        });
       };
 
       loadResults();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMachine, selectedMonth, selectedYear]);
 
   const handleGenerateReport = () => {
@@ -240,21 +309,15 @@ export default function MPCResultPage() {
   const handleDateClick = (dayObj: { day: number; month: number; year: number }) => {
     const results = getResultsForDate(dayObj);
     if (results) {
-      // Navigate to detail page with the date passed through router state (hidden from URL)
       const dateStr = `${dayObj.year}-${String(dayObj.month + 1).padStart(2, '0')}-${String(dayObj.day).padStart(2, '0')}`;
-      // Store the date and a guard flag in sessionStorage for the detail page to retrieve
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('resultDetailFrom', '1');
-        sessionStorage.setItem('resultDetailDate', dateStr);
-        if (selectedMachine) {
-          sessionStorage.setItem('resultDetailMachineId', selectedMachine.id);
-        }
-        // Also store the day's status to pre-fill the UI
-        try {
-          sessionStorage.setItem('resultDetailDayStatus', JSON.stringify(results));
-        } catch { }
+
+      const params = new URLSearchParams();
+      params.set('date', dateStr);
+      if (selectedMachine) {
+        params.set('machineId', selectedMachine.id);
       }
-      router.push(`/result-detail`);
+
+      router.push(`/result-detail?${params.toString()}`);
     }
   };
 
@@ -428,80 +491,104 @@ export default function MPCResultPage() {
             </Button>
           </div>
 
-          {/* Calendar Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {/* Week day headers */}
-            {weekDays.map((day) => (
-              <div key={day} className="p-2 text-center text-sm font-medium text-gray-500">
-                {day}
-              </div>
-            ))}
+          {/* Calendar Grid or Empty State */}
+          {(() => {
+            const hasDataForMonth = monthlyResults && monthlyResults.checks && monthlyResults.checks.length > 0;
 
-            {/* Calendar days */}
-            {getDaysInMonth(new Date(selectedYear, selectedMonth, 1)).map((dayObj, index) => {
-              if (dayObj === null) {
-                return <div key={`empty-${index}`} className="p-2"></div>;
-              }
-
-              const results = getResultsForDate(dayObj);
-              const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
-              const hasResults = results && results.length > 0;
-
+            if (loading && !hasDataForMonth) {
               return (
-                <div
-                  key={uniqueKey}
-                  onClick={() => hasResults && handleDateClick(dayObj)}
-                  className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${hasResults
-                    ? 'hover:bg-gray-50 cursor-pointer hover:border-primary'
-                    : ''
-                    }`}
-                >
-                  <div className="text-sm font-medium text-foreground mb-1">
-                    {dayObj.day}
-                  </div>
-
-                  <div className="space-y-1">
-                    {results.map((result, rIndex) => {
-                      // Attempt to show time, or just an index if time is same
-                      let timeLabel = '';
-                      if (result.date.includes('T')) {
-                        const timePart = result.date.split('T')[1];
-                        if (timePart) {
-                          timeLabel = timePart.substring(0, 5); // HH:MM
-                        }
-                      }
-
-                      return (
-                        <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
-                          {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
-                          {result.geometryCheckStatus && (
-                            <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus === 'pass'
-                              ? 'bg-green-100 text-green-800'
-                              : result.geometryCheckStatus === 'warning'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                              }`}>
-                              {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
-                            </div>
-                          )}
-                          {result.beamCheckStatus && (
-                            <div className={`text-xs px-2 py-1 rounded ${result.beamCheckStatus === 'pass'
-                              ? 'bg-green-100 text-green-800'
-                              : result.beamCheckStatus === 'warning'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                              }`}>
-                              {UI_CONSTANTS.CHECKS.BEAM_CHECK}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="flex items-center justify-center p-12 min-h-[400px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
               );
-            })}
-          </div>
+            }
+
+            if (!hasDataForMonth) {
+              return (
+                <div className="flex flex-col items-center justify-center p-12 min-h-[400px]">
+                  <p className="text-xl text-gray-400 font-bold italic text-center">
+                    No data available for this month
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-7 gap-1">
+                {/* Week day headers */}
+                {weekDays.map((day) => (
+                  <div key={day} className="p-2 text-center text-sm font-medium text-gray-500">
+                    {day}
+                  </div>
+                ))}
+
+                {/* Calendar days */}
+                {getDaysInMonth(new Date(selectedYear, selectedMonth, 1)).map((dayObj, index) => {
+                  if (dayObj === null) {
+                    return <div key={`empty-${index}`} className="p-2"></div>;
+                  }
+
+                  const results = getResultsForDate(dayObj);
+                  const uniqueKey = `${dayObj.year}-${dayObj.month}-${dayObj.day}`;
+                  const hasResults = results && results.length > 0;
+
+                  return (
+                    <div
+                      key={uniqueKey}
+                      onClick={() => hasResults && handleDateClick(dayObj)}
+                      className={`p-2 min-h-[${CALENDAR_CONSTANTS.MIN_CALENDAR_HEIGHT}px] border border-gray-100 transition-colors ${hasResults
+                        ? 'hover:bg-gray-50 cursor-pointer hover:border-primary'
+                        : ''
+                        }`}
+                    >
+                      <div className="text-sm font-medium text-foreground mb-1">
+                        {dayObj.day}
+                      </div>
+
+                      {hasResults && (
+                        <div className="space-y-1">
+                          {results.map((result, rIndex) => {
+                            let timeLabel = '';
+                            if (result.date.includes('T')) {
+                              const timePart = result.date.split('T')[1];
+                              if (timePart) {
+                                timeLabel = timePart.substring(0, 5); // HH:MM
+                              }
+                            }
+                            return (
+                              <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
+                                {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
+                                {result.geometryCheckStatus && (
+                                  <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus.toLowerCase() === 'pass'
+                                    ? 'bg-green-100 text-green-800'
+                                    : result.geometryCheckStatus.toLowerCase() === 'warning'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                                    }`}>
+                                    {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
+                                  </div>
+                                )}
+                                {result.beamCheckStatus && (
+                                  <div className={`text-xs px-2 py-1 rounded ${result.beamCheckStatus.toLowerCase() === 'pass'
+                                    ? 'bg-green-100 text-green-800'
+                                    : result.beamCheckStatus.toLowerCase() === 'warning'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                                    }`}>
+                                    {UI_CONSTANTS.CHECKS.BEAM_CHECK}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Results Summary */}

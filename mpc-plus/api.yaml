@@ -155,7 +155,6 @@ paths:
           required: true
           schema:
             type: string
-            enum: [output_change, uniformity_change, center_shift]
           description: Type of metric
       responses:
         '200':
@@ -166,6 +165,27 @@ paths:
                 $ref: '#/components/schemas/Threshold'
         '404':
           description: Threshold not found
+
+    post:
+      tags:
+        - Thresholds
+      summary: Update threshold
+      description: Updates or creates a threshold configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Threshold'
+      responses:
+        '200':
+          description: Threshold updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Threshold'
+        '400':
+          description: Bad request
 
   /updates:
     get:
@@ -428,12 +448,12 @@ paths:
         '404':
           description: Beam not found
 
-  /beams/accept:
+  /beams/approve:
     post:
       tags:
         - Beams
-      summary: Accept multiple beams
-      description: Marks multiple beams as accepted by a user
+      summary: Approve multiple beams
+      description: Marks multiple beams as approved by a user
       requestBody:
         required: true
         content:
@@ -445,14 +465,14 @@ paths:
                   type: array
                   items:
                     type: string
-                acceptedBy:
+                approvedBy:
                   type: string
               required:
                 - beamIds
-                - acceptedBy
+                - approvedBy
       responses:
         '200':
-          description: Beams accepted successfully
+          description: Beams approved successfully
           content:
             application/json:
               schema:
@@ -1159,7 +1179,6 @@ components:
           description: Beam variant
         MetricType:
           type: string
-          enum: [output_change, uniformity_change, center_shift]
           description: Type of metric
         Value:
           type: number
