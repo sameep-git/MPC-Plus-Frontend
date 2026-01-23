@@ -80,10 +80,13 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
         const startStr = formatDateForInput(startDate);
         const endStr = formatDateForInput(endDate);
 
-        const [beams, geoChecks] = await Promise.all([
+        const [groupedBeams, geoChecks] = await Promise.all([
             fetchBeams({ machineId, startDate: startStr, endDate: endStr }),
             fetchGeoChecks({ machineId, startDate: startStr, endDate: endStr })
         ]);
+
+        // Flatten groups to beams for graph data
+        const beams = groupedBeams.flatMap(g => g.beams);
 
         const data: GraphDataPoint[] = [];
         const currentDate = new Date(startDate);
@@ -190,7 +193,8 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
             data.push(dataPoint);
             currentDate.setDate(currentDate.getDate() + 1);
         }
-        return { graphData: data, beams, geoChecks };
+
+        return { graphData: data, beams: groupedBeams, geoChecks };
     } catch (err) {
         console.error('Failed to fetch graph data', err);
         return { graphData: [], beams: [], geoChecks: [] };

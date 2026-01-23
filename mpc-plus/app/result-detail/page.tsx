@@ -27,7 +27,7 @@ import { DateRangePicker } from '../../components/ui/date-range-picker';
 import { MetricTable } from '../../components/results/MetricTable';
 import { CheckGroup } from '../../components/results/CheckGroup';
 import { GraphSection } from '../../components/results/GraphSection';
-// Models & Utils
+import type { CheckGroup as CheckGroupModel } from '../../models/CheckGroup';
 import type { DateRange } from "react-day-picker";
 import { useThresholds } from '../../lib/context/ThresholdContext';
 
@@ -37,7 +37,6 @@ function ResultDetailPageContent() {
   const { thresholds } = useThresholds();
 
   // Data Hook
-  // Data Hook (Date management only)
   const {
     selectedDate,
     updateDate,
@@ -75,14 +74,37 @@ function ResultDetailPageContent() {
 
   const { data: graphData, beams: allBeams, geoChecks: allGeoChecks, loading: dataLoading, error: dataError, refresh } = useGraphData(graphDateRange.start, graphDateRange.end, machineId);
 
-  // Filter and map results for the *selected date* from the broader graph dataset
-  const beamResults = useMemo(() => {
+  // Pagination State
+  const [activeCheckIndex, setActiveCheckIndex] = useState(0);
+
+  // Reset pagination when date changes
+  useEffect(() => {
+    setActiveCheckIndex(0);
+  }, [selectedDate]);
+
+  // Filter groups for the *selected date*
+  const dailyGroups = useMemo(() => {
     if (!allBeams || allBeams.length === 0) return [];
-    // Ensure we match date string format YYYY-MM-DD
+
+    // allBeams is CheckGroup[] from the updated API/Hook pipe
+    const groups = allBeams as unknown as CheckGroupModel[];
+
     const isoDate = selectedDate.toISOString().split('T')[0];
-    const daysBeams = allBeams.filter(b => b.date === isoDate);
-    return mapBeamsToResults(daysBeams, thresholds);
-  }, [allBeams, selectedDate, thresholds]);
+    // Filter by timestamp matching the date
+    return groups
+      .filter(g => g.timestamp.startsWith(isoDate))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [allBeams, selectedDate]);
+
+  // Map results for the CURRENT active check group
+  const beamResults = useMemo(() => {
+    if (dailyGroups.length === 0) return [];
+    const group = dailyGroups[activeCheckIndex];
+    // fallback to first if index out of bounds (safety)
+    const beams = group ? group.beams : dailyGroups[0].beams;
+    return mapBeamsToResults(beams, thresholds);
+  }, [dailyGroups, activeCheckIndex, thresholds]);
+
 
   const geoResults = useMemo(() => {
     if (!allGeoChecks || allGeoChecks.length === 0) return [];
@@ -283,6 +305,34 @@ function ResultDetailPageContent() {
           </div>
         ) : (
           <>
+            {dailyGroups.length > 1 && (
+              <div className="flex items-center justify-between mx-1 mb-2 bg-slate-50 border rounded-md p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={activeCheckIndex === 0}
+                  onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.max(0, prev - 1)); }}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Prev Check
+                </Button>
+                <div className="flex flex-col items-center">
+                  <span className="font-semibold text-sm">
+                    Check {activeCheckIndex + 1} of {dailyGroups.length}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(dailyGroups[activeCheckIndex]?.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={activeCheckIndex === dailyGroups.length - 1}
+                  onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.min(dailyGroups.length - 1, prev + 1)); }}
+                >
+                  Next Check <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
             {beamResults.map(check => (
               <CheckGroup
                 key={check.id}

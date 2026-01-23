@@ -163,7 +163,9 @@ type FetchBeamsParams = {
   range?: 'week' | 'month' | 'quarter';
 };
 
-export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> => {
+import type { CheckGroup } from '../models/CheckGroup';
+
+export const fetchBeams = async (params: FetchBeamsParams): Promise<CheckGroup[]> => {
   try {
     if (API_BASE) {
       const url = new URL(`${API_BASE.replace(/\/$/, '')}/beams`);
@@ -186,10 +188,11 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
-      return data as BeamType[];
+      // Note: Supabase direct fallback does not support grouping yet.
+      return data as unknown as CheckGroup[];
     }
 
-    return [] as BeamType[];
+    return [] as CheckGroup[];
   } catch (err) {
     throw err;
   }
