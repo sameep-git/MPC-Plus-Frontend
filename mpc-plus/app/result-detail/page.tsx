@@ -699,6 +699,9 @@ function ResultDetailPageContent() {
           <div className="flex-1 overflow-y-auto py-4">
             {beamResults.length > 0 && (() => {
               const currentBeam = beamResults[approvalCurrentIndex];
+              // Safe check for data consistency during updates/modal transitions
+              if (!currentBeam) return null;
+
               const isPass = currentBeam.status === 'PASS';
               return (
                 <div className="space-y-6">

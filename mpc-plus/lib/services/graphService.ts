@@ -101,7 +101,7 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
             };
 
             // Map Beams
-            const dayBeams = beams.filter(b => b.date === isoDate);
+            const dayBeams = beams.filter(b => b.date && b.date.startsWith(isoDate));
             dayBeams.forEach(b => {
                 if (b.type) {
                     const type = b.type;
@@ -121,7 +121,8 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
             });
 
             // Map Geo Checks (assuming one per day)
-            const dayGeo = geoChecks.find(g => g.date === isoDate);
+            // Use startsWith to handle ISO timestamps in Date field
+            const dayGeo = geoChecks.find(g => g.date && g.date.startsWith(isoDate));
             if (dayGeo) {
                 // IsoCenter
                 if (dayGeo.isoCenterSize !== undefined) dataPoint[getMetricKey('Iso Center Size')] = dayGeo.isoCenterSize;
