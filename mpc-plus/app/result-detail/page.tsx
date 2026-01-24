@@ -106,12 +106,54 @@ function ResultDetailPageContent() {
   }, [dailyGroups, activeCheckIndex, thresholds]);
 
 
+  // Determine the timestamp of the currently selected beam check group
+  const activeBeamTimestamp = useMemo(() => {
+    if (dailyGroups.length > 0 && dailyGroups[activeCheckIndex]) {
+      // Prefer timestamp field, fallback to date if needed
+      const ts = dailyGroups[activeCheckIndex].timestamp;
+      return ts ? new Date(ts).getTime() : null;
+    }
+    return null;
+  }, [dailyGroups, activeCheckIndex]);
+
   const geoResults = useMemo(() => {
     if (!allGeoChecks || allGeoChecks.length === 0) return [];
-    const isoDate = selectedDate.toISOString().split('T')[0];
-    const daysGeo = allGeoChecks.find(g => g.date === isoDate);
-    return daysGeo ? mapGeoCheckToResults(daysGeo, thresholds) : [];
-  }, [allGeoChecks, selectedDate, thresholds]);
+
+    const targetDateStr = selectedDate.toISOString().split('T')[0];
+
+    // 1. Filter checks belonging to the selected date
+    // We check if the date string starts with our target YYYY-MM-DD
+    const dayGeoChecks = allGeoChecks.filter(g =>
+      (g.date && g.date.startsWith(targetDateStr)) ||
+      (g.timestamp && g.timestamp.startsWith(targetDateStr))
+    );
+
+    if (dayGeoChecks.length === 0) return [];
+
+    let selectedGeoCheck = dayGeoChecks[0];
+
+    // 2. If we have an active beam check, find the GeoCheck closest in time
+    if (activeBeamTimestamp) {
+      let minDiff = Number.MAX_VALUE;
+
+      dayGeoChecks.forEach(g => {
+        // Use timestamp if available, else date
+        const timeStr = g.timestamp || g.date;
+        if (!timeStr) return;
+
+        const gTime = new Date(timeStr).getTime();
+        const diff = Math.abs(gTime - activeBeamTimestamp);
+
+        if (diff < minDiff) {
+          minDiff = diff;
+          selectedGeoCheck = g;
+        }
+      });
+    }
+
+    // 3. Map the selected GeoCheck to results
+    return mapGeoCheckToResults(selectedGeoCheck, thresholds);
+  }, [allGeoChecks, selectedDate, thresholds, activeBeamTimestamp]);
 
   // UI State
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));
