@@ -3,8 +3,8 @@
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { LineChart as ChartIcon, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, fetchThresholds, type Threshold } from '../../lib/api';
+import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
+import { fetchUser, handleApiError, approveBeams } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -25,8 +25,9 @@ import { mapBeamsToResults, mapGeoCheckToResults } from '../../lib/transformers/
 // Components
 import { DateRangePicker } from '../../components/ui/date-range-picker';
 import { MetricTable } from '../../components/results/MetricTable';
-import { CheckGroup } from '../../components/results/CheckGroup';
 import { GraphSection } from '../../components/results/GraphSection';
+import { ResultHeader } from '../../components/results/ResultHeader';
+import { ResultList } from '../../components/results/ResultList';
 import type { CheckGroup as CheckGroupModel } from '../../models/CheckGroup';
 import type { DateRange } from "react-day-picker";
 import { useThresholds } from '../../lib/context/ThresholdContext';
@@ -332,172 +333,7 @@ function ResultDetailPageContent() {
   };
 
   // --- Render Helpers ---
-  const renderBeamSection = () => (
-    <CheckGroup
-      id="group-beam-checks"
-      title="Beam Checks"
-      isExpanded={expandedChecks.has('group-beam-checks')}
-      onToggle={toggleCheckExpand}
-      className="border border-gray-200 rounded-lg overflow-hidden bg-white"
-    >
-      <div className="p-2 space-y-2">
-        {dataLoading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : (
-          <>
-            {dailyGroups.length > 1 && (
-              <div className="flex items-center justify-between mx-1 mb-2 bg-slate-50 border rounded-md p-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={activeCheckIndex === 0}
-                  onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.max(0, prev - 1)); }}
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" /> Prev Check
-                </Button>
-                <div className="flex flex-col items-center">
-                  <span className="font-semibold text-sm">
-                    Check {activeCheckIndex + 1} of {dailyGroups.length}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(dailyGroups[activeCheckIndex]?.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={activeCheckIndex === dailyGroups.length - 1}
-                  onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.min(dailyGroups.length - 1, prev + 1)); }}
-                >
-                  Next Check <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
-            )}
-            {beamResults.map(check => (
-              <CheckGroup
-                key={check.id}
-                id={check.id}
-                title={check.name}
-                status={check.status}
-                isExpanded={expandedChecks.has(check.id)}
-                onToggle={toggleCheckExpand}
-              >
-                <MetricTable
-                  metrics={check.metrics}
-                  selectedMetrics={selectedMetrics}
-                  onToggleMetric={toggleMetric}
-                  showAbsolute={true}
-                />
-              </CheckGroup>
-            ))}
-            {beamResults.length === 0 && <div className="p-4 text-muted-foreground text-sm">No beam checks found.</div>}
-          </>
-        )}
-      </div>
-    </CheckGroup>
-  );
 
-  const renderGeoSection = () => (
-    <CheckGroup
-      id="group-geo-checks"
-      title="Geometry Checks"
-      isExpanded={expandedChecks.has('group-geo-checks')}
-      onToggle={toggleCheckExpand}
-      className="border border-gray-200 rounded-lg overflow-hidden bg-white"
-    >
-      <div className="p-2 space-y-2">
-        {dataLoading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : (
-          <>
-            {/* Simple Groups */}
-            {['geo-isocenter', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-parallelism', 'geo-mlc-offsets'].map(id => {
-              const check = geoResults.find(c => c.id === id);
-              if (!check) return null;
-              return (
-                <CheckGroup
-                  key={check.id}
-                  id={check.id}
-                  title={check.name}
-                  status={check.status}
-                  isExpanded={expandedChecks.has(check.id)}
-                  onToggle={toggleCheckExpand}
-                >
-                  <MetricTable
-                    metrics={check.metrics}
-                    selectedMetrics={selectedMetrics}
-                    onToggleMetric={toggleMetric}
-                  />
-                </CheckGroup>
-              );
-            })}
-
-            {/* Nested Groups: MLC Leaves */}
-            {geoResults.some(c => c.id.includes('geo-mlc-')) && (
-              <CheckGroup
-                id="geo-mlc-leaves-group"
-                title="MLC Leaves"
-                isExpanded={expandedChecks.has('geo-mlc-leaves-group')}
-                onToggle={toggleCheckExpand}
-              >
-                <div className="pl-2 space-y-2 pt-2">
-                  {['geo-mlc-a', 'geo-mlc-b'].map(id => {
-                    const check = geoResults.find(c => c.id === id);
-                    if (!check) return null;
-                    return (
-                      <CheckGroup
-                        key={check.id}
-                        id={check.id}
-                        title={check.name}
-                        status={check.status}
-                        isExpanded={expandedChecks.has(check.id)}
-                        onToggle={toggleCheckExpand}
-                      >
-                        <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
-                      </CheckGroup>
-                    );
-                  })}
-                </div>
-              </CheckGroup>
-            )}
-
-            {/* Nested Groups: Backlash Leaves */}
-            {geoResults.some(c => c.id.includes('geo-backlash-')) && (
-              <CheckGroup
-                id="geo-backlash-group"
-                title="Backlash Leaves"
-                isExpanded={expandedChecks.has('geo-backlash-group')}
-                onToggle={toggleCheckExpand}
-              >
-                <div className="pl-2 space-y-2 pt-2">
-                  {['geo-backlash-a', 'geo-backlash-b'].map(id => {
-                    const check = geoResults.find(c => c.id === id);
-                    if (!check) return null;
-                    return (
-                      <CheckGroup
-                        key={check.id}
-                        id={check.id}
-                        title={check.name}
-                        status={check.status}
-                        isExpanded={expandedChecks.has(check.id)}
-                        onToggle={toggleCheckExpand}
-                      >
-                        <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
-                      </CheckGroup>
-                    );
-                  })}
-                </div>
-              </CheckGroup>
-            )}
-          </>
-        )}
-      </div>
-    </CheckGroup>
-  );
 
   const formatDate = (date: Date): string => {
     if (!date || isNaN(date.getTime())) return '';
@@ -510,74 +346,15 @@ function ResultDetailPageContent() {
     <div className="min-h-screen bg-background transition-colors">
       <Navbar user={user} />
       <main className="p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold text-foreground mb-4">
-            MPC Results for {formatDate(selectedDate)}
-          </h1>
-          <p className="text-muted-foreground mb-6 max-w-2xl">
-            {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
-          </p>
-          <div className="flex items-center w-full gap-4 flex-wrap">
-            <Button
-              variant="outline"
-              size="lg"
-              // Keeping placeholder logic for Generate Report if needed, or removing if deprecated in refactor
-              onClick={handleGenerateReport}
-              className="text-muted-foreground border-gray-300 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-            >
-              {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
-            </Button>
-
-            {(() => {
-              // Only beam checks are accepted.
-              const beams = availableReportChecks.filter(c => c.type === 'beam');
-              // Check if ALL beams are accepted
-              const allAccepted = beams.length > 0 && beams.every(b => {
-                const res = beamResults.find(cr => cr.id === b.id);
-                return !!res?.approvedBy;
-              });
-
-              if (allAccepted) {
-                // Use info from the first valid beam for display, or generic. Assuming similar acceptance.
-                const firstAccepted = beamResults.find(cr => cr.id === beams[0].id);
-                const formatTime = (d?: string) => {
-                  if (!d) return '';
-                  const utc = d.endsWith('Z') ? d : `${d}Z`;
-                  return new Date(utc).toLocaleString();
-                };
-                const timestamp = formatTime(firstAccepted?.approvedDate);
-                return (
-                  <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-md text-sm italic h-11">
-                    Approved by {firstAccepted?.approvedBy} on {timestamp}
-                  </div>
-                );
-              }
-
-              return (
-                <Button
-                  onClick={openApprovalModal}
-                  size="lg"
-                  variant="default"
-                >
-                  Approve Results
-                </Button>
-              );
-            })()}
-
-            <Button
-              onClick={() => setShowGraph(prev => !prev)}
-              size="lg"
-              variant={showGraph ? "secondary" : "outline"}
-              className={showGraph
-                ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"}
-            >
-              Graph
-              <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
-            </Button>
-          </div>
-        </div>
+        <ResultHeader
+          selectedDate={selectedDate}
+          onGenerateReport={handleGenerateReport}
+          onApprove={openApprovalModal}
+          onToggleGraph={() => setShowGraph(prev => !prev)}
+          showGraph={showGraph}
+          availableReportChecks={availableReportChecks}
+          beamResults={beamResults}
+        />
 
         {dataError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
@@ -586,11 +363,18 @@ function ResultDetailPageContent() {
         )}
 
         <div className={`grid gap-8 mt-8 ${showGraph ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
-          {/* Checks Column */}
-          <div className="space-y-4">
-            {renderBeamSection()}
-            {renderGeoSection()}
-          </div>
+          <ResultList
+            beamResults={beamResults}
+            geoResults={geoResults}
+            dailyGroups={dailyGroups}
+            activeCheckIndex={activeCheckIndex}
+            setActiveCheckIndex={setActiveCheckIndex}
+            expandedChecks={expandedChecks}
+            toggleCheckExpand={toggleCheckExpand}
+            selectedMetrics={selectedMetrics}
+            toggleMetric={toggleMetric}
+            dataLoading={dataLoading}
+          />
 
           {/* Graph Column */}
           {showGraph && (

@@ -198,14 +198,14 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<CheckGroup[]
   }
 };
 
-export const approveBeams = async (beamIds: string[], acceptedBy: string): Promise<BeamType[]> => {
+export const approveBeams = async (beamIds: string[], approvedBy: string): Promise<BeamType[]> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/beams/accept`;
       const data = await safeFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beamIds: beamIds, acceptedBy: acceptedBy })
+        body: JSON.stringify({ beamIds: beamIds, approvedBy: approvedBy })
       });
       return toCamelCase(data);
     }
@@ -218,7 +218,7 @@ export const approveBeams = async (beamIds: string[], acceptedBy: string): Promi
       const { data, error } = await supabase
         .from('beams')
         .update({
-          approved_by: acceptedBy,
+          approved_by: approvedBy,
           approved_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
         })
         .in('id', beamIds)

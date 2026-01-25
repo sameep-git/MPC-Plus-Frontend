@@ -1,0 +1,98 @@
+import React from 'react';
+import { Button } from '../ui';
+import { UI_CONSTANTS } from '../../constants';
+import { LineChart as ChartIcon } from 'lucide-react';
+import type { CheckResult } from '../../models/CheckResult';
+
+interface ResultHeaderProps {
+    selectedDate: Date;
+    onGenerateReport: () => void;
+    onApprove: () => void;
+    onToggleGraph: () => void;
+    showGraph: boolean;
+    availableReportChecks: { id: string; name: string; type: string }[];
+    beamResults: CheckResult[];
+}
+
+export const ResultHeader: React.FC<ResultHeaderProps> = ({
+    selectedDate,
+    onGenerateReport,
+    onApprove,
+    onToggleGraph,
+    showGraph,
+    availableReportChecks,
+    beamResults
+}) => {
+    const formatDate = (date: Date): string => {
+        if (!date || isNaN(date.getTime())) return '';
+        return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    };
+
+    return (
+        <div className="mb-6">
+            <h1 className="text-4xl font-bold text-foreground mb-4">
+                MPC Results for {formatDate(selectedDate)}
+            </h1>
+            <p className="text-muted-foreground mb-6 max-w-2xl">
+                {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
+            </p>
+            <div className="flex items-center w-full gap-4 flex-wrap">
+                <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={onGenerateReport}
+                    className="text-muted-foreground border-gray-300 hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                >
+                    {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
+                </Button>
+
+                {(() => {
+                    // Only beam checks are accepted.
+                    const beams = availableReportChecks.filter(c => c.type === 'beam');
+                    // Check if ALL beams are accepted
+                    const allAccepted = beams.length > 0 && beams.every(b => {
+                        const res = beamResults.find(cr => cr.id === b.id);
+                        return !!res?.approvedBy;
+                    });
+
+                    if (allAccepted) {
+                        const firstAccepted = beamResults.find(cr => cr.id === beams[0].id);
+                        const formatTime = (d?: string) => {
+                            if (!d) return '';
+                            const utc = d.endsWith('Z') ? d : `${d}Z`;
+                            return new Date(utc).toLocaleString();
+                        };
+                        const timestamp = formatTime(firstAccepted?.approvedDate);
+                        return (
+                            <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-md text-sm italic h-11">
+                                Approved by {firstAccepted?.approvedBy} on {timestamp}
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <Button
+                            onClick={onApprove}
+                            size="lg"
+                            variant="default"
+                        >
+                            Approve Results
+                        </Button>
+                    );
+                })()}
+
+                <Button
+                    onClick={onToggleGraph}
+                    size="lg"
+                    variant={showGraph ? "secondary" : "outline"}
+                    className={showGraph
+                        ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                        : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"}
+                >
+                    Graph
+                    <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
+                </Button>
+            </div>
+        </div>
+    );
+};
