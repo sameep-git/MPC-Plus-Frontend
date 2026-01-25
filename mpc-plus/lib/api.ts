@@ -235,6 +235,38 @@ export const approveBeams = async (beamIds: string[], approvedBy: string): Promi
   }
 };
 
+export const approveGeoChecks = async (geoCheckIds: string[], approvedBy: string): Promise<GeoCheckType[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/geochecks/accept`;
+      const data = await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ geoCheckIds: geoCheckIds, approvedBy: approvedBy })
+      });
+      return toCamelCase(data);
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('geochecks')
+        .update({
+          approved_by: approvedBy,
+          approved_date: new Date().toISOString()
+        })
+        .in('id', geoCheckIds)
+        .select();
+
+      if (error) throw error;
+      return toCamelCase(data) as GeoCheckType[];
+    }
+    return [];
+  } catch (err) {
+    console.error('[approveGeoChecks] Error:', err);
+    throw err;
+  }
+};
+
 export type FetchGeoChecksParams = {
   machineId: string;
   type?: string;

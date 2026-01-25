@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -117,13 +117,11 @@ function ResultDetailPageContent() {
     return null;
   }, [dailyGroups, activeCheckIndex]);
 
-  const geoResults = useMemo(() => {
+
+  const dayGeoChecks = useMemo(() => {
     if (!allGeoChecks || allGeoChecks.length === 0) return [];
-
     const targetDateStr = selectedDate.toISOString().split('T')[0];
-
-    // 1. Filter checks belonging to the selected date & Sort by time
-    const dayGeoChecks = allGeoChecks.filter(g =>
+    return allGeoChecks.filter(g =>
       (g.date && g.date.startsWith(targetDateStr)) ||
       (g.timestamp && g.timestamp.startsWith(targetDateStr))
     ).sort((a, b) => {
@@ -131,7 +129,9 @@ function ResultDetailPageContent() {
       const timeB = new Date(b.timestamp || b.date).getTime();
       return timeA - timeB;
     });
+  }, [allGeoChecks, selectedDate]);
 
+  const geoResults = useMemo(() => {
     if (dayGeoChecks.length === 0) return [];
 
     // 2. Sequential Matching: activeCheckIndex maps directly to the index in dayGeoChecks
@@ -141,7 +141,10 @@ function ResultDetailPageContent() {
 
     // 3. Map the selected GeoCheck to results
     return mapGeoCheckToResults(selectedGeoCheck, thresholds);
-  }, [allGeoChecks, selectedDate, thresholds, activeCheckIndex]);
+  }, [dayGeoChecks, thresholds, activeCheckIndex]);
+
+  // Combine for approval modal
+  const reviewableItems = useMemo(() => [...beamResults, ...geoResults], [beamResults, geoResults]);
 
   // UI State
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));
@@ -252,10 +255,8 @@ function ResultDetailPageContent() {
 
   const handleNextBeam = () => {
     const nextIndex = approvalCurrentIndex + 1;
-    // Filter out already approved beams to know the true length of what we are approving?
-    // The requirement says "visit every beam type".
-    // We will iterate through `beamResults`.
-    if (nextIndex < beamResults.length) {
+    // Iterate through reviewableItems
+    if (nextIndex < reviewableItems.length) {
       setApprovalCurrentIndex(nextIndex);
       setApprovalVisitedIndices(prev => {
         const next = new Set(prev);
@@ -278,18 +279,24 @@ function ResultDetailPageContent() {
         return;
       }
 
-      // Collect ALL beam IDs that are NOT yet approved
+      setIsApproving(true);
+
+      // 1. Approve Beams
       const beamsToApprove = beamResults
         .filter(b => !b.approvedBy)
         .map(b => b.id.replace('beam-', ''));
 
-      if (beamsToApprove.length === 0) {
-        setIsSignOffModalOpen(false);
-        return;
+      if (beamsToApprove.length > 0) {
+        await approveBeams(beamsToApprove, user.name || user.id);
       }
 
-      setIsApproving(true);
-      await approveBeams(beamsToApprove, user.name || user.id);
+      // 2. Approve Geo Checks
+      // We approve the active GeoCheck if it exists
+      const selectedGeoCheck = dayGeoChecks[activeCheckIndex];
+      if (selectedGeoCheck && !selectedGeoCheck.approvedBy) {
+        await approveGeoChecks([selectedGeoCheck.id], user.name || user.id);
+      }
+
       setIsSignOffModalOpen(false);
       refresh();
     } catch (err) {
@@ -464,35 +471,35 @@ function ResultDetailPageContent() {
       <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>
         <DialogContent className="sm:max-w-[700px] h-[600px] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Approve Results ({approvalCurrentIndex + 1} of {beamResults.length})</DialogTitle>
+            <DialogTitle>Approve Results ({approvalCurrentIndex + 1} of {reviewableItems.length})</DialogTitle>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto py-4">
-            {beamResults.length > 0 && (() => {
-              const currentBeam = beamResults[approvalCurrentIndex];
+            {reviewableItems.length > 0 && (() => {
+              const currentItem = reviewableItems[approvalCurrentIndex];
               // Safe check for data consistency during updates/modal transitions
-              if (!currentBeam) return null;
+              if (!currentItem) return null;
 
-              const isPass = currentBeam.status === 'PASS';
+              const isPass = currentItem.status === 'PASS';
               return (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between border-b pb-4">
                     <div>
-                      <h3 className="text-xl font-semibold">{currentBeam.name}</h3>
+                      <h3 className="text-xl font-semibold">{currentItem.name}</h3>
                       <p className="text-sm text-muted-foreground mt-1">
                         Review data carefully before approving.
                       </p>
                     </div>
                     <div className={`flex items-center px-3 py-1 rounded-full text-sm font-medium ${isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {isPass ? <CheckCircle2 className="w-4 h-4 mr-1.5" /> : <XCircle className="w-4 h-4 mr-1.5" />}
-                      {currentBeam.status}
+                      {currentItem.status}
                     </div>
                   </div>
 
                   {/* Reusing MetricTable logic but inline or we can just render the component */}
                   <div className="border rounded-lg overflow-hidden">
                     <MetricTable
-                      metrics={currentBeam.metrics}
+                      metrics={currentItem.metrics}
                       selectedMetrics={new Set()}
                       onToggleMetric={() => { }} // No graphing in modal
                       showAbsolute={true}
@@ -501,7 +508,7 @@ function ResultDetailPageContent() {
                 </div>
               );
             })()}
-            {beamResults.length === 0 && <div className="text-center text-muted-foreground mt-10">No results to show.</div>}
+            {reviewableItems.length === 0 && <div className="text-center text-muted-foreground mt-10">No results to show.</div>}
           </div>
 
           <DialogFooter className="flex items-center justify-between sm:justify-between w-full mt-auto border-t pt-4">
@@ -517,7 +524,7 @@ function ResultDetailPageContent() {
               <Button
                 variant="outline"
                 onClick={handleNextBeam}
-                disabled={approvalCurrentIndex === beamResults.length - 1}
+                disabled={approvalCurrentIndex === reviewableItems.length - 1}
               >
                 Next
                 <ChevronRight className="w-4 h-4 ml-2" />
@@ -528,8 +535,8 @@ function ResultDetailPageContent() {
               <Button variant="ghost" onClick={() => setIsSignOffModalOpen(false)}>Cancel</Button>
               <Button
                 onClick={handleApproveAll}
-                disabled={isApproving || approvalVisitedIndices.size < beamResults.length}
-                variant={approvalVisitedIndices.size < beamResults.length ? "secondary" : "default"}
+                disabled={isApproving || approvalVisitedIndices.size < reviewableItems.length}
+                variant={approvalVisitedIndices.size < reviewableItems.length ? "secondary" : "default"}
               >
                 {isApproving ? 'Approving...' : 'Approve All'}
               </Button>

@@ -31,7 +31,12 @@ interface DayCheckStatus {
   date: string;
   beamCheckStatus: 'pass' | 'warning' | 'fail' | null;
   geometryCheckStatus: 'pass' | 'warning' | 'fail' | null;
+  beamApproved?: boolean;
+  geometryApproved?: boolean;
+  beamCount?: number;
+  geometryCheckCount?: number;
 }
+
 
 interface MonthlyResults {
   month: number;
@@ -191,31 +196,34 @@ export default function MPCResultPage() {
         let currentData = resultsCache[currentKey];
 
         if (currentData) {
-          setMonthlyResults(currentData);
+          setMonthlyResults(currentData); // Show cached data immediately while fetching fresh
           setError(null);
-        } else {
-          // Double check in-flight to avoid duplicate current fetch
-          if (!fetchingRef.current.has(currentKey)) {
-            try {
-              fetchingRef.current.add(currentKey);
-              setError(null);
-              // Fetch current month immediately
-              const data = await fetchResults(selectedMonth + 1, selectedYear, machineId);
+        }
 
-              setMonthlyResults(data);
-              setResultsCache(prev => ({
-                ...prev,
-                [currentKey]: data
-              }));
-            } catch (err) {
+        // Always fetch fresh data for the current view to ensure approval status is up to date
+        if (!fetchingRef.current.has(currentKey)) {
+          try {
+            fetchingRef.current.add(currentKey);
+            setError(null);
+            // Fetch current month
+            const data = await fetchResults(selectedMonth + 1, selectedYear, machineId);
+
+            setMonthlyResults(data);
+            setResultsCache(prev => ({
+              ...prev,
+              [currentKey]: data
+            }));
+          } catch (err) {
+            // If fetch fails but we have cache, keep showing cache but maybe show a toast (omitted for now)
+            // If no cache, show error
+            if (!currentData) {
               const errorMessage = handleApiError(err);
               setError(errorMessage);
-              console.error('Error loading results:', err);
               setMonthlyResults(null);
-              return; // Don't prefetch if current fails
-            } finally {
-              fetchingRef.current.delete(currentKey);
             }
+            console.error('Error loading results:', err);
+          } finally {
+            fetchingRef.current.delete(currentKey);
           }
         }
 
@@ -559,21 +567,25 @@ export default function MPCResultPage() {
                               <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
                                 {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
                                 {result.geometryCheckStatus && (
-                                  <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus.toLowerCase() === 'pass'
-                                    ? 'bg-green-100 text-green-800'
+                                  <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus.toLowerCase() === 'fail'
+                                    ? 'bg-red-100 text-red-800'
                                     : result.geometryCheckStatus.toLowerCase() === 'warning'
                                       ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-red-100 text-red-800'
+                                      : result.geometryApproved
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-yellow-100 text-yellow-800'
                                     }`}>
                                     {UI_CONSTANTS.CHECKS.GEOMETRY_CHECK}
                                   </div>
                                 )}
                                 {result.beamCheckStatus && (
-                                  <div className={`text-xs px-2 py-1 rounded ${result.beamCheckStatus.toLowerCase() === 'pass'
-                                    ? 'bg-green-100 text-green-800'
+                                  <div className={`text-xs px-2 py-1 rounded ${result.beamCheckStatus.toLowerCase() === 'fail'
+                                    ? 'bg-red-100 text-red-800'
                                     : result.beamCheckStatus.toLowerCase() === 'warning'
                                       ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-red-100 text-red-800'
+                                      : result.beamApproved
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-yellow-100 text-yellow-800'
                                     }`}>
                                     {UI_CONSTANTS.CHECKS.BEAM_CHECK}
                                   </div>
@@ -597,7 +609,7 @@ export default function MPCResultPage() {
             <h3 className="text-lg font-semibold text-foreground mb-2">
               {UI_CONSTANTS.TITLES.RESULTS_SUMMARY} {selectedMachine.name}
             </h3>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 text-sm mb-4">
               <div>
                 <span className="text-muted-foreground">{UI_CONSTANTS.SUMMARY.TOTAL_CHECKS}</span>
                 <span className="ml-2 font-medium">
@@ -615,6 +627,25 @@ export default function MPCResultPage() {
                 <span className="ml-2 font-medium">
                   {monthlyResults.checks.filter((c: DayCheckStatus) => c.beamCheckStatus).length}
                 </span>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Status Legend</h4>
+              <div className="flex items-center space-x-6 text-sm">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                  <span>Passed & Signed Off</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                  <span>Pending Sign Off / Warning</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+                  <span>Failed</span>
+                </div>
               </div>
             </div>
           </div>
