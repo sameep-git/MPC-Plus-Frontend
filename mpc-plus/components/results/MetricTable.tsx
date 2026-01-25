@@ -19,12 +19,13 @@ export const MetricTable: React.FC<MetricTableProps> = ({
 }) => {
     return (
         <div className="p-3 overflow-x-auto">
-            <Table>
+            <Table className="table-fixed w-full">
                 <TableHeader>
                     <TableRow>
-                        <TableHead className="w-[50%]">Metric</TableHead>
-                        <TableHead className="text-right">Value</TableHead>
-                        {showAbsolute && <TableHead>Abs</TableHead>}
+                        <TableHead className="w-1/2">Metric</TableHead>
+                        <TableHead className="w-1/4 text-right">Value</TableHead>
+                        <TableHead className="w-1/4 text-right">Threshold</TableHead>
+                        {showAbsolute && <TableHead className="w-20 text-right">Abs</TableHead>}
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -51,6 +52,7 @@ export const MetricTable: React.FC<MetricTableProps> = ({
                                 </div>
                             </TableCell>
                             <TableCell className="text-right">{formatMetricValue(m.name, m.value)}</TableCell>
+                            <TableCell className="text-right text-muted-foreground text-sm">{m.thresholds || '-'}</TableCell>
                             {showAbsolute && <TableCell>{m.absoluteValue || '-'}</TableCell>}
                         </TableRow>
                     ))}

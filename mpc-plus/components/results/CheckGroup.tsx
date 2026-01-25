@@ -33,9 +33,9 @@ export const CheckGroup: React.FC<CheckGroupProps> = ({
                     <span className="font-medium text-sm text-foreground">{title}</span>
                     {status && (
                         <span
-                            className={`text-xs font-semibold ${status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}
+                            className={`text-xs font-semibold ${status.toUpperCase() === 'PASS' ? 'text-green-600' : 'text-red-600'}`}
                         >
-                            - {status}
+                            - {status.toUpperCase()}
                         </span>
                     )}
                 </div>

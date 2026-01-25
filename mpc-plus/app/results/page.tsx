@@ -548,9 +548,9 @@ export default function MPCResultPage() {
                       {results && (
                         <div className="space-y-1">
                           {results.geometryCheckStatus && (
-                            <div className={`text-xs px-2 py-1 rounded ${results.geometryCheckStatus === 'pass'
+                            <div className={`text-xs px-2 py-1 rounded ${results.geometryCheckStatus.toLowerCase() === 'pass'
                               ? 'bg-green-100 text-green-800'
-                              : results.geometryCheckStatus === 'warning'
+                              : results.geometryCheckStatus.toLowerCase() === 'warning'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                               }`}>
@@ -558,9 +558,9 @@ export default function MPCResultPage() {
                             </div>
                           )}
                           {results.beamCheckStatus && (
-                            <div className={`text-xs px-2 py-1 rounded ${results.beamCheckStatus === 'pass'
+                            <div className={`text-xs px-2 py-1 rounded ${results.beamCheckStatus.toLowerCase() === 'pass'
                               ? 'bg-green-100 text-green-800'
-                              : results.beamCheckStatus === 'warning'
+                              : results.beamCheckStatus.toLowerCase() === 'warning'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                               }`}>

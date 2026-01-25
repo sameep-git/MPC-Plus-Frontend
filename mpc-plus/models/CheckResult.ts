@@ -12,6 +12,6 @@ export interface CheckResult {
     name: string;
     status: 'PASS' | 'FAIL' | 'WARNING';
     metrics: CheckMetric[];
-    acceptedBy?: string;
-    acceptedDate?: string;
+    approvedBy?: string;
+    approvedDate?: string;
 }

@@ -16,10 +16,17 @@ const toCamelCase = (obj: any): any => {
     return obj.map(v => toCamelCase(v));
   } else if (obj !== null && obj.constructor === Object) {
     return Object.keys(obj).reduce(
-      (result, key) => ({
-        ...result,
-        [key.charAt(0).toLowerCase() + key.slice(1)]: toCamelCase(obj[key]),
-      }),
+      (result, key) => {
+        // Handle snake_case to camelCase conversion
+        const camelKey = key.replace(/_([a-z0-9])/g, (match, letter) => letter.toUpperCase());
+        // Handle PascalCase to camelCase conversion
+        const finalKey = camelKey.charAt(0).toLowerCase() + camelKey.slice(1);
+
+        return {
+          ...result,
+          [finalKey]: toCamelCase(obj[key]),
+        };
+      },
       {}
     );
   }
@@ -188,14 +195,14 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
   }
 };
 
-export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promise<BeamType[]> => {
+export const approveBeams = async (beamIds: string[], approvedBy: string): Promise<BeamType[]> => {
   try {
     if (API_BASE) {
-      const url = `${API_BASE.replace(/\/$/, '')}/beams/accept`;
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/approve`;
       const data = await safeFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beamIds, acceptedBy })
+        body: JSON.stringify({ beamIds, approvedBy })
       });
       return toCamelCase(data);
     }
@@ -208,8 +215,8 @@ export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promis
       const { data, error } = await supabase
         .from('beams')
         .update({
-          accepted_by: acceptedBy,
-          accepted_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+          approved_by: approvedBy,
+          approved_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
         })
         .in('id', beamIds)
         .select();
@@ -220,7 +227,7 @@ export const acceptBeams = async (beamIds: string[], acceptedBy: string): Promis
 
     return [];
   } catch (err) {
-    console.error('[acceptBeams] Error:', err);
+    console.error('[approveBeams] Error:', err);
     throw err;
   }
 };
@@ -262,6 +269,81 @@ export const fetchGeoChecks = async (params: FetchGeoChecksParams): Promise<GeoC
 
     return [] as GeoCheckType[];
   } catch (err) {
+    throw err;
+  }
+};
+
+// Threshold API
+export interface Threshold {
+  id?: string;
+  machineId: string;
+  checkType: 'geometry' | 'beam';
+  beamVariant?: string;
+  metricType: string;
+  value: number;
+  lastUpdated?: string;
+}
+
+export const fetchThresholds = async (): Promise<Threshold[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/thresholds/all`;
+      return toCamelCase(await safeFetch(url));
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase.from('thresholds').select('*');
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[fetchThresholds] Error:', err);
+    throw err;
+  }
+};
+
+export const saveThreshold = async (threshold: Threshold): Promise<Threshold> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/thresholds`;
+      const data = await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(threshold),
+      });
+      return toCamelCase(data);
+    }
+
+    if (supabase) {
+      // Upsert logic for Supabase
+      // Assuming 'machine_id', 'check_type', 'beam_variant', 'metric_type' composite unique key or similar
+      // We need to convert camelCase back to snake_case for Supabase if needed, but existing code seems to expect snake_case in DB
+      // We will do a best effort mapping here
+      const dbPayload = {
+        machine_id: threshold.machineId,
+        check_type: threshold.checkType,
+        beam_variant: threshold.beamVariant,
+        metric_type: threshold.metricType,
+        value: threshold.value,
+        last_updated: new Date().toISOString(),
+        ...(threshold.id ? { id: threshold.id } : {})
+      };
+
+      const { data, error } = await supabase
+        .from('thresholds')
+        .upsert(dbPayload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+
+    throw new Error('No API or Supabase configured');
+  } catch (err) {
+    console.error('[saveThreshold] Error:', err);
     throw err;
   }
 };
