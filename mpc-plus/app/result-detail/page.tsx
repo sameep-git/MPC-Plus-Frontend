@@ -122,39 +122,26 @@ function ResultDetailPageContent() {
 
     const targetDateStr = selectedDate.toISOString().split('T')[0];
 
-    // 1. Filter checks belonging to the selected date
-    // We check if the date string starts with our target YYYY-MM-DD
+    // 1. Filter checks belonging to the selected date & Sort by time
     const dayGeoChecks = allGeoChecks.filter(g =>
       (g.date && g.date.startsWith(targetDateStr)) ||
       (g.timestamp && g.timestamp.startsWith(targetDateStr))
-    );
+    ).sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.date).getTime();
+      const timeB = new Date(b.timestamp || b.date).getTime();
+      return timeA - timeB;
+    });
 
     if (dayGeoChecks.length === 0) return [];
 
-    let selectedGeoCheck = dayGeoChecks[0];
+    // 2. Sequential Matching: activeCheckIndex maps directly to the index in dayGeoChecks
+    const selectedGeoCheck = dayGeoChecks[activeCheckIndex];
 
-    // 2. If we have an active beam check, find the GeoCheck closest in time
-    if (activeBeamTimestamp) {
-      let minDiff = Number.MAX_VALUE;
-
-      dayGeoChecks.forEach(g => {
-        // Use timestamp if available, else date
-        const timeStr = g.timestamp || g.date;
-        if (!timeStr) return;
-
-        const gTime = new Date(timeStr).getTime();
-        const diff = Math.abs(gTime - activeBeamTimestamp);
-
-        if (diff < minDiff) {
-          minDiff = diff;
-          selectedGeoCheck = g;
-        }
-      });
-    }
+    if (!selectedGeoCheck) return [];
 
     // 3. Map the selected GeoCheck to results
     return mapGeoCheckToResults(selectedGeoCheck, thresholds);
-  }, [allGeoChecks, selectedDate, thresholds, activeBeamTimestamp]);
+  }, [allGeoChecks, selectedDate, thresholds, activeCheckIndex]);
 
   // UI State
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set(['group-beam-checks']));

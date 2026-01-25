@@ -114,84 +114,92 @@ export const ResultList: React.FC<ResultListProps> = ({
                     </div>
                 ) : (
                     <>
-                        {/* Simple Groups */}
-                        {['geo-isocenter', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-parallelism', 'geo-mlc-offsets'].map(id => {
-                            const check = geoResults.find(c => c.id === id);
-                            if (!check) return null;
-                            return (
-                                <CheckGroup
-                                    key={check.id}
-                                    id={check.id}
-                                    title={check.name}
-                                    status={check.status}
-                                    isExpanded={expandedChecks.has(check.id)}
-                                    onToggle={toggleCheckExpand}
-                                >
-                                    <MetricTable
-                                        metrics={check.metrics}
-                                        selectedMetrics={selectedMetrics}
-                                        onToggleMetric={toggleMetric}
-                                    />
-                                </CheckGroup>
-                            );
-                        })}
+                        {geoResults.length === 0 ? (
+                            <div className="p-4 text-muted-foreground text-sm text-center">
+                                No geometry checks available for this timestamp.
+                            </div>
+                        ) : (
+                            <>
+                                {/* Simple Groups */}
+                                {['geo-isocenter', 'geo-collimation', 'geo-gantry', 'geo-couch', 'geo-jaws', 'geo-jaws-parallelism', 'geo-mlc-offsets'].map(id => {
+                                    const check = geoResults.find(c => c.id === id);
+                                    if (!check) return null;
+                                    return (
+                                        <CheckGroup
+                                            key={check.id}
+                                            id={check.id}
+                                            title={check.name}
+                                            status={check.status}
+                                            isExpanded={expandedChecks.has(check.id)}
+                                            onToggle={toggleCheckExpand}
+                                        >
+                                            <MetricTable
+                                                metrics={check.metrics}
+                                                selectedMetrics={selectedMetrics}
+                                                onToggleMetric={toggleMetric}
+                                            />
+                                        </CheckGroup>
+                                    );
+                                })}
 
-                        {/* Nested Groups: MLC Leaves */}
-                        {geoResults.some(c => c.id.includes('geo-mlc-')) && (
-                            <CheckGroup
-                                id="geo-mlc-leaves-group"
-                                title="MLC Leaves"
-                                isExpanded={expandedChecks.has('geo-mlc-leaves-group')}
-                                onToggle={toggleCheckExpand}
-                            >
-                                <div className="pl-2 space-y-2 pt-2">
-                                    {['geo-mlc-a', 'geo-mlc-b'].map(id => {
-                                        const check = geoResults.find(c => c.id === id);
-                                        if (!check) return null;
-                                        return (
-                                            <CheckGroup
-                                                key={check.id}
-                                                id={check.id}
-                                                title={check.name}
-                                                status={check.status}
-                                                isExpanded={expandedChecks.has(check.id)}
-                                                onToggle={toggleCheckExpand}
-                                            >
-                                                <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
-                                            </CheckGroup>
-                                        );
-                                    })}
-                                </div>
-                            </CheckGroup>
-                        )}
+                                {/* Nested Groups: MLC Leaves */}
+                                {geoResults.some(c => c.id.includes('geo-mlc-')) && (
+                                    <CheckGroup
+                                        id="geo-mlc-leaves-group"
+                                        title="MLC Leaves"
+                                        isExpanded={expandedChecks.has('geo-mlc-leaves-group')}
+                                        onToggle={toggleCheckExpand}
+                                    >
+                                        <div className="pl-2 space-y-2 pt-2">
+                                            {['geo-mlc-a', 'geo-mlc-b'].map(id => {
+                                                const check = geoResults.find(c => c.id === id);
+                                                if (!check) return null;
+                                                return (
+                                                    <CheckGroup
+                                                        key={check.id}
+                                                        id={check.id}
+                                                        title={check.name}
+                                                        status={check.status}
+                                                        isExpanded={expandedChecks.has(check.id)}
+                                                        onToggle={toggleCheckExpand}
+                                                    >
+                                                        <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
+                                                    </CheckGroup>
+                                                );
+                                            })}
+                                        </div>
+                                    </CheckGroup>
+                                )}
 
-                        {/* Nested Groups: Backlash Leaves */}
-                        {geoResults.some(c => c.id.includes('geo-backlash-')) && (
-                            <CheckGroup
-                                id="geo-backlash-group"
-                                title="Backlash Leaves"
-                                isExpanded={expandedChecks.has('geo-backlash-group')}
-                                onToggle={toggleCheckExpand}
-                            >
-                                <div className="pl-2 space-y-2 pt-2">
-                                    {['geo-backlash-a', 'geo-backlash-b'].map(id => {
-                                        const check = geoResults.find(c => c.id === id);
-                                        if (!check) return null;
-                                        return (
-                                            <CheckGroup
-                                                key={check.id}
-                                                id={check.id}
-                                                title={check.name}
-                                                status={check.status}
-                                                isExpanded={expandedChecks.has(check.id)}
-                                                onToggle={toggleCheckExpand}
-                                            >
-                                                <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
-                                            </CheckGroup>
-                                        );
-                                    })}
-                                </div>
-                            </CheckGroup>
+                                {/* Nested Groups: Backlash Leaves */}
+                                {geoResults.some(c => c.id.includes('geo-backlash-')) && (
+                                    <CheckGroup
+                                        id="geo-backlash-group"
+                                        title="Backlash Leaves"
+                                        isExpanded={expandedChecks.has('geo-backlash-group')}
+                                        onToggle={toggleCheckExpand}
+                                    >
+                                        <div className="pl-2 space-y-2 pt-2">
+                                            {['geo-backlash-a', 'geo-backlash-b'].map(id => {
+                                                const check = geoResults.find(c => c.id === id);
+                                                if (!check) return null;
+                                                return (
+                                                    <CheckGroup
+                                                        key={check.id}
+                                                        id={check.id}
+                                                        title={check.name}
+                                                        status={check.status}
+                                                        isExpanded={expandedChecks.has(check.id)}
+                                                        onToggle={toggleCheckExpand}
+                                                    >
+                                                        <MetricTable metrics={check.metrics} selectedMetrics={selectedMetrics} onToggleMetric={toggleMetric} />
+                                                    </CheckGroup>
+                                                );
+                                            })}
+                                        </div>
+                                    </CheckGroup>
+                                )}
+                            </>
                         )}
                     </>
                 )}
