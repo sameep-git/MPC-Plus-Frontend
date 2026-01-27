@@ -55,21 +55,21 @@ export const mapBeamsToResults = (loadedBeams: Beam[], thresholds: Threshold[] =
             // Backend returns "PASS"/"FAIL" usually uppercase based on my C# code?
             // C# code: "PASS", "FAIL".
             const status = (beam.relOutputStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Output');
+            const threshold = thresholds.find(t => t.machineId === beam.machineId && t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Output');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : ''; // Assuming % for output
             metrics.push({ name, value: beam.relOutput, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
         if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
             const name = createBeamSpecificMetricName('Relative Uniformity', type);
             const status = (beam.relUniformityStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Uniformity');
+            const threshold = thresholds.find(t => t.machineId === beam.machineId && t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Uniformity');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : '';
             metrics.push({ name, value: beam.relUniformity, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
         if (beam.centerShift !== undefined && beam.centerShift !== null) {
             const name = createBeamSpecificMetricName('Center Shift', type);
             const status = (beam.centerShiftStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Center Shift');
+            const threshold = thresholds.find(t => t.machineId === beam.machineId && t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Center Shift');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(3)}` : '';
             metrics.push({ name, value: beam.centerShift, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
@@ -114,7 +114,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
             // Backend stores as "FAIL" if failed. If not present or "PASS", it's pass.
             const backendStatus = metricStatuses[def.key] || 'PASS';
             // Match threshold by display name (def.name) - this is how Settings page saves metric_type
-            const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === def.name);
+            const threshold = thresholds.find(t => t.machineId === gc.machineId && t.checkType === 'geometry' && t.metricType === def.name);
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}` : '';
 
             metrics.push({
@@ -195,7 +195,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
             // I'll leave leaf status as 'pass' individually to avoid false positives, but let group status reflect the failure.
             // User requirement: "show the pass/fail metric on each group based on each individual metric... even one fail is FAIL for the whole group."
 
-            const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_leaf_position');
+            const threshold = thresholds.find(t => t.machineId === gc.machineId && t.checkType === 'geometry' && t.metricType === 'mlc_leaf_position');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}` : '';
             mlcAMetrics.push({ name: `MLC A Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
         });
@@ -211,7 +211,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     const mlcBMetrics: CheckMetric[] = [];
     if (gc.mlcLeavesB) {
         Object.entries(gc.mlcLeavesB).forEach(([key, val]) => {
-            const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_leaf_position');
+            const threshold = thresholds.find(t => t.machineId === gc.machineId && t.checkType === 'geometry' && t.metricType === 'mlc_leaf_position');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}` : '';
             mlcBMetrics.push({ name: `MLC B Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
         });
@@ -236,7 +236,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     const backlashAMetrics: CheckMetric[] = [];
     if (gc.mlcBacklashA) {
         Object.entries(gc.mlcBacklashA).forEach(([key, val]) => {
-            const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
+            const threshold = thresholds.find(t => t.machineId === gc.machineId && t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(2)}` : ''; // Backlash usually has max limit
             backlashAMetrics.push({ name: `Backlash A Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
         });
@@ -252,7 +252,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     const backlashBMetrics: CheckMetric[] = [];
     if (gc.mlcBacklashB) {
         Object.entries(gc.mlcBacklashB).forEach(([key, val]) => {
-            const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
+            const threshold = thresholds.find(t => t.machineId === gc.machineId && t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(2)}` : '';
             backlashBMetrics.push({ name: `Backlash B Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
         });

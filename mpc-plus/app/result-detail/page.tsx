@@ -5,17 +5,17 @@ import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LineChart as ChartIcon, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 import { fetchUser, handleApiError, approveBeams, fetchThresholds, type Threshold } from '../../lib/api';
+import Navbar from '../../components/ui/Navbar';
+import { Button } from '../../components/ui/Button';
 import {
-  Navbar,
-  Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  Label,
-  Checkbox,
-} from '../../components/ui';
+} from '../../components/ui/dialog';
+import { Label } from '../../components/ui/label';
+import { Checkbox } from '../../components/ui/checkbox';
 import { UI_CONSTANTS } from '../../constants';
 // Hooks
 // Hooks
@@ -487,11 +487,11 @@ function ResultDetailPageContent() {
           </div>
         </div>
 
-        {dataError && (
+        {dataError ? (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
             {UI_CONSTANTS.ERRORS.LOADING_DATA} {dataError}
           </div>
-        )}
+        ) : null}
 
         <div className={`grid gap-8 mt-8 ${showGraph ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
           {/* Checks Column */}
@@ -510,6 +510,7 @@ function ResultDetailPageContent() {
                 onClearMetrics={() => setSelectedMetrics(new Set())}
                 onClose={() => setShowGraph(false)}
                 availableMetrics={getAllAvailableMetrics()}
+                machineId={machineId}
               />
               {/* Quick Dates */}
               <div className="mb-4 border border-gray-200 rounded-lg p-4">

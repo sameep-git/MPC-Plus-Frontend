@@ -5,24 +5,25 @@ import { useRouter } from 'next/navigation';
 
 import { fetchMachines, fetchUser, fetchResults, handleApiError, fetchBeamTypes } from '../../lib/api';
 import type { Machine as MachineType } from '../../models/Machine';
+import Navbar from '../../components/ui/Navbar';
+import { Button } from '../../components/ui/Button';
 import {
-  Navbar,
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from '../../components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  Label,
-  Checkbox,
-  DatePicker,
-  DateRangePicker
-} from '../../components/ui';
+} from '../../components/ui/dialog';
+import { Label } from '../../components/ui/label';
+import { Checkbox } from '../../components/ui/checkbox';
+import { DateRangePicker } from '../../components/ui/date-range-picker';
 import { DateRange } from 'react-day-picker';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
 
@@ -97,7 +98,7 @@ export default function MPCResultPage() {
           }));
         } else {
           // Fallback default
-          const defaults = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
+          const defaults = ['2.5x', '6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e'];
           beamChecks = defaults.map(t => ({ id: `beam-${t}`, name: `Beam Check (${t})`, type: 'beam' }));
         }
       } catch (e) {
@@ -362,7 +363,7 @@ export default function MPCResultPage() {
         </div>
 
         {/* Error Display */}
-        {error && (
+        {error ? (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {error}</p>
             <Button
@@ -373,7 +374,7 @@ export default function MPCResultPage() {
               {UI_CONSTANTS.BUTTONS.RETRY}
             </Button>
           </div>
-        )}
+        ) : null}
 
         {/* Controls */}
         <div className="mb-8 space-y-6">

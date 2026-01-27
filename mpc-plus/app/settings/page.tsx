@@ -4,25 +4,25 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, type Threshold } from '../../lib/api';
 import type { Machine } from '../../models/Machine';
+import Navbar from '../../components/ui/Navbar';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { RadioGroup, RadioGroupItem } from '../../components/ui/radio-group';
+import { DatePicker } from '../../components/ui/date-picker';
 import {
-  Navbar,
-  Button,
-  Input,
-  Label,
-  RadioGroup,
-  RadioGroupItem,
-  DatePicker,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from '../../components/ui/select';
+import {
   Card,
   CardHeader,
-  CardTitle,
   CardContent,
   CardFooter
-} from '../../components/ui';
+} from '../../components/ui/card';
 import { NAVIGATION } from '../../constants';
 import { TEAM_COLORS } from '../../constants/teamColors';
 import {
@@ -108,7 +108,7 @@ const SETTINGS_SECTIONS = [
   { id: 'baseline-settings', label: 'Baseline' },
 ] as const;
 
-const BEAM_VARIANTS = ['2.5x', '6x', '6xFFF', '10x', '15x', '6e', '9e', '12e', '16e']; // Common variants
+const BEAM_VARIANTS = ['2.5x', '6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e']; // Common variants
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -504,11 +504,11 @@ export default function SettingsPage() {
         </nav>
 
         {/* Error Display */}
-        {error && (
+        {error ? (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <p className="text-red-600 dark:text-red-400">Error: {error}</p>
           </div>
-        )}
+        ) : null}
 
         {/* Theme Settings */}
         <section
@@ -572,9 +572,9 @@ export default function SettingsPage() {
                 Manage pass/fail tolerances for beam and geometry checks.
               </p>
             </div>
-            {thresholdSuccess && (
+            {thresholdSuccess ? (
               <span className="text-green-600 font-medium animate-pulse">{thresholdSuccess}</span>
-            )}
+            ) : null}
           </div>
 
           <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">

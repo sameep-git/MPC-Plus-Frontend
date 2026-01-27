@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import { fetchMachines, fetchUpdates, fetchUser, handleApiError } from '../lib/api';
 import type { Machine as MachineType } from '../models/Machine';
 import type { UpdateModel as UpdateModelType } from '../models/Update';
-import { Navbar, Button, UpdateCard } from '../components/ui';
+import Navbar from '../components/ui/Navbar';
+import { Button } from '../components/ui/Button';
+import { UpdateCard } from '../components/ui/UpdateCard';
 import { UI_CONSTANTS, NAVIGATION } from '../constants';
 
 export default function Home() {
@@ -80,7 +82,7 @@ export default function Home() {
         </section>
 
         {/* Error Display for Machines */}
-        {machinesError && (
+        {machinesError ? (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {machinesError}</p>
             <Button
@@ -91,7 +93,7 @@ export default function Home() {
               {UI_CONSTANTS.BUTTONS.RETRY}
             </Button>
           </div>
-        )}
+        ) : null}
 
         {/* Today's Machine Updates */}
         <section className="mb-8">
@@ -144,11 +146,11 @@ export default function Home() {
           </div>
 
           <div className="space-y-4">
-            {updatesError && (
+            {updatesError ? (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600">{UI_CONSTANTS.ERRORS.LOADING_DATA} {updatesError}</p>
               </div>
-            )}
+            ) : null}
             {updatesLoading ? (
               // Loading skeleton for updates
               Array.from({ length: 3 }).map((_, index) => (

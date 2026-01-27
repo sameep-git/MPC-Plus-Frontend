@@ -24,6 +24,36 @@ export interface BeamThresholds {
     uniformityChange: { min: number; max: number };
     centerShift: { min: number; max: number };
   };
+  'beam-10xfff': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
+  'beam-15x': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
+  'beam-6e': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
+  'beam-9e': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
+  'beam-12e': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
+  'beam-16e': {
+    outputChange: { min: number; max: number };
+    uniformityChange: { min: number; max: number };
+    centerShift: { min: number; max: number };
+  };
 }
 
 export type BaselineMode = 'date' | 'manual';
@@ -67,6 +97,36 @@ const DEFAULT_THRESHOLDS: BeamThresholds = {
     centerShift: { min: -2, max: 2 },
   },
   'beam-10x': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-10xfff': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-15x': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-6e': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-9e': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-12e': {
+    outputChange: { min: -3, max: 3 },
+    uniformityChange: { min: -2.5, max: 2.5 },
+    centerShift: { min: -2, max: 2 },
+  },
+  'beam-16e': {
     outputChange: { min: -3, max: 3 },
     uniformityChange: { min: -2.5, max: 2.5 },
     centerShift: { min: -2, max: 2 },

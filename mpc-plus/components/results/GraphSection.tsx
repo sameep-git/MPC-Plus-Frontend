@@ -24,6 +24,7 @@ import { getDefaultDomainForMetric } from '../../lib/services/graphService';
 import { getMetricKey } from '../../lib/transformers/resultTransformers';
 import type { GraphDataPoint } from '../../models/Graph';
 import { generateGraphData } from '../../lib/services/graphService';
+import { useThresholds } from '../../lib/context/ThresholdContext';
 
 interface GraphSectionProps {
     data: GraphDataPoint[];
@@ -32,6 +33,7 @@ interface GraphSectionProps {
     onClearMetrics: () => void;
     onClose: () => void;
     availableMetrics: string[];
+    machineId: string;
 }
 
 export const GraphSection: React.FC<GraphSectionProps> = ({
@@ -41,23 +43,44 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
     onClearMetrics,
     onClose,
     availableMetrics,
+    machineId,
 }) => {
-    // Local state for settings provided here for simplicity, or passed as props if needed to shift up
-    // In the original file, these were state in Page. For now, we'll read direct or use props.
-    // To avoid prop drilling hell, reading settings directly here is acceptable if they are global/local storage based.
-    // However, Page had effects on focus to refresh settings.
-    // Let's assume settings don't change often while graph is open or simple read is enough.
-
-    const graphThresholdSettings = useMemo(() => {
-        const s = getSettings();
-        return {
-            topPercent: s.graphThresholdTopPercent ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT,
-            bottomPercent: s.graphThresholdBottomPercent ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_PERCENT,
-            color: s.graphThresholdColor ?? GRAPH_CONSTANTS.DEFAULT_THRESHOLD_COLOR,
-        };
-    }, []);
+    const { getThreshold } = useThresholds();
 
     const baselineSettings = useMemo(() => getSettings().baseline, []);
+
+    // Calculate effective threshold based on selected metrics
+    const effectiveThreshold = useMemo(() => {
+        if (selectedMetrics.size === 0) return null;
+
+        let minAbsThreshold = Number.POSITIVE_INFINITY;
+        let found = false;
+
+        Array.from(selectedMetrics).forEach(metricName => {
+            // Parse metric name to determine type and variant
+            // Pattern: "Metric Name (Variant)" e.g. "Relative Output (6x)"
+            const beamMatch = metricName.match(/^(.*) \((.*)\)$/);
+
+            let checkType: 'beam' | 'geometry' = 'geometry';
+            let metricType = metricName;
+            let beamVariant: string | undefined = undefined;
+
+            if (beamMatch) {
+                checkType = 'beam';
+                metricType = beamMatch[1];
+                beamVariant = beamMatch[2];
+            }
+
+            const val = getThreshold(machineId, checkType, metricType, beamVariant);
+
+            if (val !== null && val !== undefined) {
+                found = true;
+                minAbsThreshold = Math.min(minAbsThreshold, Math.abs(val));
+            }
+        });
+
+        return found && Number.isFinite(minAbsThreshold) ? minAbsThreshold : null;
+    }, [selectedMetrics, machineId, getThreshold]);
 
     // Baseline Computation Logic (Migrated from Page)
     const baselineComputation = useMemo(() => {
@@ -112,25 +135,8 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
     }, [baselineSettings, data, selectedMetrics]);
 
     const chartData = useMemo(() => {
-        if (!baselineComputation.hasNumericBaseline) {
-            return data;
-        }
-
-        return data.map((point) => {
-            const nextPoint: GraphDataPoint = { ...point };
-
-            Object.entries(baselineComputation.valuesByMetric).forEach(([key, baselineValue]) => {
-                if (typeof baselineValue === 'number') {
-                    const rawValue = point[key];
-                    if (typeof rawValue === 'number') {
-                        nextPoint[key] = Number((rawValue - baselineValue).toFixed(3));
-                    }
-                }
-            });
-
-            return nextPoint;
-        });
-    }, [data, baselineComputation]);
+        return data; // Always use raw data (absolute values)
+    }, [data]);
 
     const yAxisDomain = useMemo<[number, number]>(() => {
         if (selectedMetrics.size === 0) return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
@@ -149,6 +155,7 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
             return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
         }
 
+        // Include data points in domain
         chartData.forEach((point) => {
             metrics.forEach((metricName) => {
                 const key = getMetricKey(metricName);
@@ -160,37 +167,34 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
             });
         });
 
+        // Include baseline values in domain
+        if (baselineComputation.hasNumericBaseline) {
+            Object.values(baselineComputation.valuesByMetric).forEach(val => {
+                if (typeof val === 'number') {
+                    domainMin = Math.min(domainMin, val);
+                    domainMax = Math.max(domainMax, val);
+                }
+            });
+        }
+
         if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax)) {
             return GRAPH_CONSTANTS.Y_AXIS_DOMAINS.DEFAULT as [number, number];
         }
 
-        if (domainMin === domainMax) {
-            const padding = Math.max(Math.abs(domainMin) * 0.1, 0.5);
-            return [domainMin - padding, domainMax + padding];
+        // Ensure domain includes the threshold if it exists
+        if (effectiveThreshold !== null) {
+            const safeBuffer = 0.5; // Ensure we see past the threshold
+            domainMax = Math.max(domainMax, effectiveThreshold + safeBuffer);
+            domainMin = Math.min(domainMin, -effectiveThreshold - safeBuffer);
         }
 
-        return [domainMin, domainMax];
-    }, [chartData, selectedMetrics]);
+        // Add padding
+        const range = domainMax - domainMin;
+        const padding = Math.max(range * 0.1, 0.1); // at least 0.1 padding
 
+        return [domainMin - padding, domainMax + padding];
+    }, [chartData, selectedMetrics, effectiveThreshold, baselineComputation]);
 
-    const { topThreshold, bottomThreshold, min: thresholdMin, max: thresholdMax } = useMemo(() => {
-        const [min, max] = yAxisDomain;
-        const range = max - min;
-
-        if (range <= 0) {
-            return {
-                topThreshold: max,
-                bottomThreshold: min,
-                min,
-                max,
-            };
-        }
-
-        const topThreshold = max - (range * graphThresholdSettings.topPercent) / 100;
-        const bottomThreshold = min + (range * graphThresholdSettings.bottomPercent) / 100;
-
-        return { topThreshold, bottomThreshold, min, max };
-    }, [graphThresholdSettings.bottomPercent, graphThresholdSettings.topPercent, yAxisDomain]);
 
     const getMetricColor = (index: number): string => {
         return GRAPH_CONSTANTS.METRIC_COLORS[index % GRAPH_CONSTANTS.METRIC_COLORS.length];
@@ -200,37 +204,30 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
         if (baselineSettings.mode === 'date') {
             if (!baselineSettings.date) {
                 return {
-                    message: 'Select a baseline date in Settings to see changes relative to that day.',
+                    message: 'Select a baseline date in Settings to see reference lines.',
                     tone: 'muted' as const,
                 };
             }
 
             if (selectedMetrics.size > 0) {
-                if (baselineComputation.baselineDateInRange) {
-                    return {
-                        message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day.`,
-                        tone: 'info' as const,
-                    };
-                }
-
                 return {
-                    message: `Baseline from ${baselineSettings.date}. Values display Δ relative to that day even though it falls outside the visible range.`,
+                    message: `Baseline from ${baselineSettings.date}. Dashed lines show baseline values.`,
                     tone: 'info' as const,
                 };
             }
 
             return {
-                message: `Baseline from ${baselineSettings.date}. Select metrics to view deltas relative to that day.`,
+                message: `Baseline from ${baselineSettings.date}. Select metrics to view.`,
                 tone: 'muted' as const,
             };
         }
 
         const { manualValues } = baselineSettings;
         return {
-            message: `Baseline uses manual values — Output ${manualValues.outputChange}, Uniformity ${manualValues.uniformityChange}, Center Shift ${manualValues.centerShift}.`,
+            message: `Baseline uses manual values.`,
             tone: 'info' as const,
         };
-    }, [baselineSettings, baselineComputation.baselineDateInRange, selectedMetrics.size]);
+    }, [baselineSettings, selectedMetrics.size]);
 
     const getBaselineBannerClasses = () => {
         const tone = baselineSummary.tone as string;
@@ -341,35 +338,67 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
                             }}
                         />
                         <>
-                            {/* Top threshold shading */}
-                            <ReferenceArea
-                                y1={topThreshold}
-                                y2={thresholdMax}
-                                fill={graphThresholdSettings.color}
-                                fillOpacity={0.3}
-                            />
-                            {/* Bottom threshold shading */}
-                            <ReferenceArea
-                                y1={thresholdMin}
-                                y2={bottomThreshold}
-                                fill={graphThresholdSettings.color}
-                                fillOpacity={0.3}
-                            />
+                            {effectiveThreshold !== null && (
+                                <>
+                                    {/* Top Warning Zone (Threshold - 0.1 to Threshold) */}
+                                    <ReferenceArea
+                                        y1={effectiveThreshold - 0.1}
+                                        y2={effectiveThreshold}
+                                        fill="#f59e0b" // Amber
+                                        fillOpacity={0.2}
+                                    />
+                                    {/* Top Fail Zone (Threshold upwards) */}
+                                    <ReferenceArea
+                                        y1={effectiveThreshold}
+                                        y2={yAxisDomain[1]} // Extend to top of graph
+                                        fill="#ef4444" // Red
+                                        fillOpacity={0.2}
+                                    />
+
+                                    {/* Bottom Warning Zone (-Threshold to -Threshold + 0.1) */}
+                                    <ReferenceArea
+                                        y1={-effectiveThreshold}
+                                        y2={-effectiveThreshold + 0.1}
+                                        fill="#f59e0b" // Amber
+                                        fillOpacity={0.2}
+                                    />
+                                    {/* Bottom Fail Zone (-Threshold downwards) */}
+                                    <ReferenceArea
+                                        y1={yAxisDomain[0]} // Extend to bottom of graph
+                                        y2={-effectiveThreshold}
+                                        fill="#ef4444" // Red
+                                        fillOpacity={0.2}
+                                    />
+
+                                    {/* Explicit Lines for Threshold */}
+                                    <ReferenceLine y={effectiveThreshold} stroke="#ef4444" strokeDasharray="3 3" />
+                                    <ReferenceLine y={-effectiveThreshold} stroke="#ef4444" strokeDasharray="3 3" />
+                                </>
+                            )}
                         </>
-                        {baselineComputation.hasNumericBaseline && (
-                            <ReferenceLine
-                                y={0}
-                                stroke="#1f2937"
-                                strokeWidth={2}
-                                strokeDasharray="4 4"
-                                label={{
-                                    value: 'Baseline',
-                                    position: 'right',
-                                    fill: '#1f2937',
-                                    fontSize: 12,
-                                }}
-                            />
-                        )}
+                        {/* Reference lines for each metric's baseline */}
+                        {Array.from(selectedMetrics).map((metricName, index) => {
+                            const key = getMetricKey(metricName);
+                            const baselineVal = baselineComputation.valuesByMetric[key];
+                            if (typeof baselineVal !== 'number') return null;
+
+                            const color = getMetricColor(index);
+                            return (
+                                <ReferenceLine
+                                    key={`baseline-${metricName}`}
+                                    y={baselineVal}
+                                    stroke={color}
+                                    strokeDasharray="5 5"
+                                    opacity={0.6}
+                                    label={{
+                                        position: 'right',
+                                        value: 'B',
+                                        fill: color,
+                                        fontSize: 10
+                                    }}
+                                />
+                            );
+                        })}
                         {Array.from(selectedMetrics).map((metricName, index) => {
                             const dataKey = getMetricKey(metricName);
                             const color = getMetricColor(index);
