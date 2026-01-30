@@ -9,7 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '../../components/ui';
+} from './dropdown-menu';
 
 interface UserMenuProps {
   user: { id: string; name?: string; role?: string } | null;
@@ -18,7 +18,7 @@ interface UserMenuProps {
   onClose?: () => void; // Kept for compatibility
 }
 
-export default function UserMenu({ user }: UserMenuProps) {
+export function UserMenu({ user }: UserMenuProps) {
   const handleMenuAction = (action: string) => {
     console.log(`User action: ${action}`);
   };

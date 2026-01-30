@@ -843,11 +843,11 @@ components:
         Note:
           type: string
           description: Notes about the beam
-        AcceptedBy:
+        ApprovedBy:
           type: string
           nullable: true
           description: Name of the person who accepted/signed off the beam check
-        AcceptedDate:
+        ApprovedDate:
           type: string
           format: date
           nullable: true

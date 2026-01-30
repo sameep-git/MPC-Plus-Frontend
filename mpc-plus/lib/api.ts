@@ -163,7 +163,9 @@ type FetchBeamsParams = {
   range?: 'week' | 'month' | 'quarter';
 };
 
-export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> => {
+import type { CheckGroup } from '../models/CheckGroup';
+
+export const fetchBeams = async (params: FetchBeamsParams): Promise<CheckGroup[]> => {
   try {
     if (API_BASE) {
       const url = new URL(`${API_BASE.replace(/\/$/, '')}/beams`);
@@ -186,10 +188,11 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
-      return data as BeamType[];
+      // Note: Supabase direct fallback does not support grouping yet.
+      return data as unknown as CheckGroup[];
     }
 
-    return [] as BeamType[];
+    return [] as CheckGroup[];
   } catch (err) {
     throw err;
   }
@@ -198,11 +201,11 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<BeamType[]> 
 export const approveBeams = async (beamIds: string[], approvedBy: string): Promise<BeamType[]> => {
   try {
     if (API_BASE) {
-      const url = `${API_BASE.replace(/\/$/, '')}/beams/approve`;
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/accept`;
       const data = await safeFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beamIds, approvedBy })
+        body: JSON.stringify({ beamIds: beamIds, approvedBy: approvedBy })
       });
       return toCamelCase(data);
     }
@@ -228,6 +231,38 @@ export const approveBeams = async (beamIds: string[], approvedBy: string): Promi
     return [];
   } catch (err) {
     console.error('[approveBeams] Error:', err);
+    throw err;
+  }
+};
+
+export const approveGeoChecks = async (geoCheckIds: string[], approvedBy: string): Promise<GeoCheckType[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/geochecks/accept`;
+      const data = await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ geoCheckIds: geoCheckIds, approvedBy: approvedBy })
+      });
+      return toCamelCase(data);
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('geochecks')
+        .update({
+          approved_by: approvedBy,
+          approved_date: new Date().toISOString()
+        })
+        .in('id', geoCheckIds)
+        .select();
+
+      if (error) throw error;
+      return toCamelCase(data) as GeoCheckType[];
+    }
+    return [];
+  } catch (err) {
+    console.error('[approveGeoChecks] Error:', err);
     throw err;
   }
 };
