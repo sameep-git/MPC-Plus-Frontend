@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, type Threshold } from '../../lib/api';
+import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, fetchBeamTypes, type Threshold } from '../../lib/api';
 import type { Machine } from '../../models/Machine';
 import {
   Navbar,
@@ -108,8 +108,6 @@ const SETTINGS_SECTIONS = [
   { id: 'baseline-settings', label: 'Baseline' },
 ] as const;
 
-const BEAM_VARIANTS = ['2.5x', '6x', '6xFFF', '10x', '15x', '6e', '9e', '12e', '16e']; // Common variants
-
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
@@ -122,6 +120,7 @@ export default function SettingsPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>('default-machine');
   const [checkType, setCheckType] = useState<'beam' | 'geometry'>('beam');
+  const [beamVariants, setBeamVariants] = useState<string[]>([]);
   const [beamVariant, setBeamVariant] = useState<string>('6x');
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingThresholds, setLoadingThresholds] = useState(false);
@@ -148,12 +147,14 @@ export default function SettingsPage() {
     const loadData = async () => {
       try {
         setLoadingThresholds(true);
-        const [machinesData, thresholdsData] = await Promise.all([
+        const [machinesData, thresholdsData, beamTypesData] = await Promise.all([
           fetchMachines(),
-          fetchThresholds()
+          fetchThresholds(),
+          fetchBeamTypes()
         ]);
 
         setMachines(machinesData);
+        setBeamVariants(beamTypesData);
         if (machinesData.length > 0 && selectedMachineId === 'default-machine') {
           // Default to first machine if we are on default and real machines exist
           setSelectedMachineId(machinesData[0].id);
@@ -411,7 +412,7 @@ export default function SettingsPage() {
     setThresholdSuccess(null);
     try {
       const metricsToSave = Object.keys(BEAM_METRICS);
-      for (const variant of BEAM_VARIANTS) {
+      for (const variant of beamVariants) {
         for (const metric of metricsToSave) {
           // Use the value from the CURRENT beamVariant as the template
           const val = getThresholdValue(metric);
@@ -613,7 +614,7 @@ export default function SettingsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {BEAM_VARIANTS.map(v => (
+                        {beamVariants.map(v => (
                           <SelectItem key={v} value={v}>{v}</SelectItem>
                         ))}
                       </SelectContent>
