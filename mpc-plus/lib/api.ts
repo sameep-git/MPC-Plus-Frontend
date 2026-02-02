@@ -143,9 +143,9 @@ export const fetchBeamTypes = async (): Promise<string[]> => {
     }
 
     if (supabase) {
-      const { data, error } = await supabase.from('beams').select('type');
+      const { data, error } = await supabase.from('beam_variants').select('variant');
       if (error) throw error;
-      return Array.from(new Set((data as { type: string }[]).map((r) => r.type))).filter(Boolean) as string[];
+      return (data as { variant: string }[]).map((r) => r.variant).sort();
     }
 
     return [];
