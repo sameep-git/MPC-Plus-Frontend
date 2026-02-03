@@ -30,10 +30,15 @@ export const MetricTable: React.FC<MetricTableProps> = ({
                 </TableHeader>
                 <TableBody>
                     {metrics.map((m, idx) => (
-                        <TableRow key={m.name}>
+                        <TableRow
+                            key={m.name}
+                            className={m.status === 'fail' ? 'bg-red-50 hover:bg-red-100' : m.status === 'warning' ? 'bg-yellow-50 hover:bg-yellow-100' : ''}
+                        >
                             <TableCell className="font-medium">
                                 <div className="flex items-center gap-2">
                                     {m.status === 'pass' && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                    {m.status === 'fail' && <div className="w-2 h-2 rounded-full bg-red-500" />}
+                                    {m.status === 'warning' && <div className="w-2 h-2 rounded-full bg-yellow-500" />}
                                     {m.name}
                                     <Button
                                         variant="ghost"
