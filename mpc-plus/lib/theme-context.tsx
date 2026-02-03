@@ -107,21 +107,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (!mounted) return;
 
     const root = document.documentElement;
-    const effectiveTheme = settings.theme === 'auto'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : settings.theme;
 
-    if (effectiveTheme === 'dark') {
-      root.classList.add('dark');
-      root.style.setProperty('--color-background', '#1a1a1a');
-      root.style.setProperty('--color-text', '#ffffff');
-      root.style.setProperty('--color-primary', '#a855f7');
-    } else {
-      root.classList.remove('dark');
-      root.style.setProperty('--color-background', '#ffffff');
-      root.style.setProperty('--color-text', '#13070c');
-      root.style.setProperty('--color-primary', '#420039');
-    }
+    // Always apply light mode
+    root.classList.remove('dark');
+    root.style.setProperty('--color-background', '#ffffff');
+    root.style.setProperty('--color-text', '#13070c');
+    root.style.setProperty('--color-primary', '#420039');
   }, [settings.theme, mounted]);
 
   // Save settings to localStorage whenever they change

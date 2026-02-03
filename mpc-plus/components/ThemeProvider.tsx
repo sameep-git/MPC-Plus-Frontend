@@ -10,8 +10,7 @@ interface ThemeProviderProps {
 export default function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     // Initialize theme immediately on mount
-    const settings = getSettings();
-    applyTheme(settings.theme);
+    applyTheme();
   }, []);
 
   return <>{children}</>;

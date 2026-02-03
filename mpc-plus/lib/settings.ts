@@ -151,7 +151,7 @@ export const saveSettings = (settings: AppSettings): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     // Apply theme and accent immediately
-    applyTheme(settings.theme);
+    applyTheme();
     applyAccentColor(settings.accentColor);
   } catch (error) {
     console.error('Error saving settings:', error);
@@ -162,7 +162,7 @@ export const updateTheme = (theme: Theme): void => {
   const settings = getSettings();
   settings.theme = theme;
   saveSettings(settings);
-  applyTheme(theme);
+  applyTheme();
 };
 
 export const updateAccentColor = (color: string): void => {
@@ -208,17 +208,14 @@ export const updateBaselineSettings = (baseline: Partial<BaselineSettings>): voi
 
 export const getDefaultAppSettings = (): AppSettings => getDefaultSettings();
 
-export const applyTheme = (theme: Theme): void => {
+export const applyTheme = (): void => {
   if (typeof window === 'undefined') {
     return;
   }
 
   const root = document.documentElement;
-  if (theme === 'dark') {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
+  // Force light mode
+  root.classList.remove('dark');
 };
 
 export const applyAccentColor = (color: string): void => {
