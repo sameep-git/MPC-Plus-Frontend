@@ -9,9 +9,6 @@ import type { CheckGroup as CheckGroupModel } from '../../models/CheckGroup';
 interface ResultListProps {
     beamResults: CheckResult[];
     geoResults: CheckResult[];
-    dailyGroups: CheckGroupModel[];
-    activeCheckIndex: number;
-    setActiveCheckIndex: React.Dispatch<React.SetStateAction<number>>;
     expandedChecks: Set<string>;
     toggleCheckExpand: (id: string) => void;
     selectedMetrics: Set<string>;
@@ -22,9 +19,6 @@ interface ResultListProps {
 export const ResultList: React.FC<ResultListProps> = ({
     beamResults,
     geoResults,
-    dailyGroups,
-    activeCheckIndex,
-    setActiveCheckIndex,
     expandedChecks,
     toggleCheckExpand,
     selectedMetrics,
@@ -47,34 +41,6 @@ export const ResultList: React.FC<ResultListProps> = ({
                     </div>
                 ) : (
                     <>
-                        {dailyGroups.length > 1 && (
-                            <div className="flex items-center justify-between mx-1 mb-2 bg-slate-50 border rounded-md p-2">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={activeCheckIndex === 0}
-                                    onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.max(0, prev - 1)); }}
-                                >
-                                    <ChevronLeft className="w-4 h-4 mr-1" /> Prev Check
-                                </Button>
-                                <div className="flex flex-col items-center">
-                                    <span className="font-semibold text-sm">
-                                        Check {activeCheckIndex + 1} of {dailyGroups.length}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                        {new Date(dailyGroups[activeCheckIndex]?.timestamp).toLocaleTimeString()}
-                                    </span>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={activeCheckIndex === dailyGroups.length - 1}
-                                    onClick={(e) => { e.stopPropagation(); setActiveCheckIndex(prev => Math.min(dailyGroups.length - 1, prev + 1)); }}
-                                >
-                                    Next Check <ChevronRight className="w-4 h-4 ml-1" />
-                                </Button>
-                            </div>
-                        )}
                         {beamResults.map(check => (
                             <CheckGroup
                                 key={check.id}

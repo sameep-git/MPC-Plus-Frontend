@@ -348,6 +348,12 @@ function ResultDetailPageContent() {
           showGraph={showGraph}
           availableReportChecks={availableReportChecks}
           beamResults={beamResults}
+          // Pagination
+          checkCount={dailyGroups.length}
+          currentCheckIndex={activeCheckIndex}
+          onPrevCheck={() => setActiveCheckIndex(prev => Math.max(0, prev - 1))}
+          onNextCheck={() => setActiveCheckIndex(prev => Math.min(dailyGroups.length - 1, prev + 1))}
+          currentCheckTimestamp={dailyGroups[activeCheckIndex]?.timestamp}
         />
 
         {dataError && (
@@ -360,9 +366,6 @@ function ResultDetailPageContent() {
           <ResultList
             beamResults={beamResults}
             geoResults={geoResults}
-            dailyGroups={dailyGroups}
-            activeCheckIndex={activeCheckIndex}
-            setActiveCheckIndex={setActiveCheckIndex}
             expandedChecks={expandedChecks}
             toggleCheckExpand={toggleCheckExpand}
             selectedMetrics={selectedMetrics}
