@@ -194,10 +194,7 @@ export default function SettingsPage() {
     };
   }, [router]);
 
-  const handleThemeChange = (theme: Theme) => {
-    updateTheme(theme);
-    setSettings((prev) => ({ ...prev, theme }));
-  };
+
 
   const handleAccentChange = (color: string) => {
     updateAccentColor(color);
@@ -517,22 +514,9 @@ export default function SettingsPage() {
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
-          <div className="flex gap-4 mb-8">
-            <Button
-              onClick={() => handleThemeChange('light')}
-              variant={settings.theme === 'light' ? 'default' : 'outline'}
-              className="w-32"
-            >
-              Light
-            </Button>
-            <Button
-              onClick={() => handleThemeChange('dark')}
-              variant={settings.theme === 'dark' ? 'default' : 'outline'}
-              className="w-32"
-            >
-              Dark
-            </Button>
-          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            The application is locked to Light mode for consistency.
+          </p>
           <div className="max-w-md">
             <Label className="mb-2 block">Accent Color</Label>
             <Select
