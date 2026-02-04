@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, fetchBeamTypes, type Threshold } from '../../lib/api';
+import DocFactorSettings from '../../components/settings/DocFactorSettings';
 import type { Machine } from '../../models/Machine';
 import {
   Navbar,
@@ -106,6 +107,7 @@ const SETTINGS_SECTIONS = [
   { id: 'beam-threshold-settings', label: 'Threshold Configuration' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
+  { id: 'doc-settings', label: 'Dose Output Correction' },
 ] as const;
 
 export default function SettingsPage() {
@@ -855,6 +857,9 @@ export default function SettingsPage() {
             )}
           </div>
         </section>
+
+        {/* DOC Factor Settings */}
+        <DocFactorSettings />
 
         {/* Action Buttons */}
         <div className="flex gap-4 justify-end">
