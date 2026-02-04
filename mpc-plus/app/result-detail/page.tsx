@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, approveGeoChecks } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks, generateReport } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -313,9 +313,43 @@ function ResultDetailPageContent() {
     setIsReportModalOpen(true);
   };
 
-  const handleSaveReport = () => {
-    // Placeholder for actual report generation
-    setIsReportModalOpen(false);
+  const handleSaveReport = async () => {
+    if (!machineId) return;
+
+    try {
+      // Create a local date string YYYY-MM-DD
+      const formatDateStr = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const start = formatDateStr(reportStartDate);
+      const end = formatDateStr(reportEndDate);
+
+      const blob = await generateReport({
+        startDate: start,
+        endDate: end,
+        machineId: machineId,
+        selectedChecks: Array.from(reportSelectedChecks)
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MPC_Report_${machineId}_${start}_to_${end}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setIsReportModalOpen(false);
+    } catch (err) {
+      console.error('Failed to generate report', err);
+      alert('Failed to generate report: ' + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const getAllAvailableMetrics = (): string[] => {

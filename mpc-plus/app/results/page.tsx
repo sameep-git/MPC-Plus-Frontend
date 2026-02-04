@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { fetchMachines, fetchUser, fetchResults, handleApiError, fetchBeamTypes } from '../../lib/api';
+import { fetchMachines, fetchUser, fetchResults, handleApiError, fetchBeamTypes, generateReport } from '../../lib/api';
 import type { Machine as MachineType } from '../../models/Machine';
 import {
   Navbar,
@@ -144,9 +144,45 @@ export default function MPCResultPage() {
   };
 
   const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
-  const handleSaveReport = () => {
+  const handleSaveReport = async () => {
     // console.log('Generating report', { start: reportStartDate, end: reportEndDate, checks: Array.from(reportSelectedChecks) });
-    setIsReportModalOpen(false);
+    if (!selectedMachine) return;
+
+    try {
+      // Create a local date string YYYY-MM-DD
+      const formatDate = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const start = formatDate(reportStartDate);
+      const end = formatDate(reportEndDate);
+
+      const blob = await generateReport({
+        startDate: start,
+        endDate: end,
+        machineId: selectedMachine.id,
+        selectedChecks: Array.from(reportSelectedChecks)
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MPC_Report_${selectedMachine.name.replace(/\s+/g, '_')}_${start}_to_${end}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setIsReportModalOpen(false);
+    } catch (err) {
+      console.error('Failed to generate report', err);
+      // Ideally show a toast here
+      setError('Failed to generate report: ' + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   useEffect(() => {
