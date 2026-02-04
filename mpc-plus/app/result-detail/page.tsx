@@ -215,8 +215,8 @@ function ResultDetailPageContent() {
 
   // --- Report Helpers ---
   const availableReportChecks = useMemo(() => [
-    ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' })),
-    ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' }))
+    ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' as const })),
+    ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' as const }))
   ], [beamResults, geoResults]);
 
   useEffect(() => {
@@ -308,6 +308,8 @@ function ResultDetailPageContent() {
   };
 
   const handleGenerateReport = () => {
+    setReportStartDate(new Date(selectedDate));
+    setReportEndDate(new Date(selectedDate));
     setIsReportModalOpen(true);
   };
 

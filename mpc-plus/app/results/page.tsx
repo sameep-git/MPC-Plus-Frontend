@@ -557,16 +557,8 @@ export default function MPCResultPage() {
                       {hasResults && (
                         <div className="space-y-1">
                           {results.map((result, rIndex) => {
-                            let timeLabel = '';
-                            if (result.date.includes('T')) {
-                              const timePart = result.date.split('T')[1];
-                              if (timePart) {
-                                timeLabel = timePart.substring(0, 5); // HH:MM
-                              }
-                            }
                             return (
                               <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
-                                {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
                                 {result.geometryCheckStatus && (
                                   <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus.toLowerCase() === 'fail'
                                     ? 'bg-red-100 text-red-800'

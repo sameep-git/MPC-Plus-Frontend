@@ -130,7 +130,10 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                             </span>
                             {currentCheckTimestamp && (
                                 <span className="text-[10px] text-muted-foreground">
-                                    {new Date(currentCheckTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {(() => {
+                                        const utc = currentCheckTimestamp.endsWith('Z') ? currentCheckTimestamp : `${currentCheckTimestamp}Z`;
+                                        return new Date(utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    })()}
                                 </span>
                             )}
                         </div>
