@@ -13,16 +13,17 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  Label,
-  Checkbox,
-  DatePicker,
-  DateRangePicker
+  // Dialog, // Handled by shared component
+  // DialogContent,
+  // DialogHeader,
+  // DialogTitle,
+  // DialogFooter,
+  // Label,
+  // Checkbox,
+  // DatePicker,
+  // DateRangePicker
 } from '../../components/ui';
+import { ReportGenerationModal } from '../../components/results/ReportGenerationModal';
 import { DateRange } from 'react-day-picker';
 import { UI_CONSTANTS, CALENDAR_CONSTANTS } from '../../constants';
 
@@ -556,16 +557,8 @@ export default function MPCResultPage() {
                       {hasResults && (
                         <div className="space-y-1">
                           {results.map((result, rIndex) => {
-                            let timeLabel = '';
-                            if (result.date.includes('T')) {
-                              const timePart = result.date.split('T')[1];
-                              if (timePart) {
-                                timeLabel = timePart.substring(0, 5); // HH:MM
-                              }
-                            }
                             return (
                               <div key={`${uniqueKey}-${rIndex}`} className="space-y-1 mb-1 border-b border-gray-100 last:border-0 pb-1 last:pb-0">
-                                {timeLabel && <div className="text-[10px] text-gray-400 font-mono">{timeLabel}</div>}
                                 {result.geometryCheckStatus && (
                                   <div className={`text-xs px-2 py-1 rounded mb-1 ${result.geometryCheckStatus.toLowerCase() === 'fail'
                                     ? 'bg-red-100 text-red-800'
@@ -653,106 +646,33 @@ export default function MPCResultPage() {
       </main>
 
       {/* Report Generation Modal */}
-      <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Generate Report</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {/* Date Range Selection */}
-            {/* Date Range Selection */}
-            <div className="space-y-2">
-              <Label>Date Range</Label>
-              <DateRangePicker
-                date={{ from: reportStartDate, to: reportEndDate }}
-                setDate={(range: DateRange | undefined) => {
-                  if (range?.from) {
-                    setReportStartDate(range.from);
-                    setReportEndDate(range.to || range.from);
-                  }
-                }}
-                className="w-full"
-              />
-            </div>
-
-            {/* Check Selection */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Select Checks</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="select-all-checks"
-                    checked={isAllChecksSelected}
-                    onCheckedChange={(c) => toggleAllReportChecks(c as boolean)}
-                  />
-                  <label
-                    htmlFor="select-all-checks"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    Select All
-                  </label>
-                </div>
-              </div>
-              <div className="border rounded-md h-[300px] overflow-y-auto space-y-4">
-                {availableReportChecks.length > 0 ? (
-                  <>
-                    {/* Beam Checks Group */}
-                    <div>
-                      <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Beam Checks</div>
-                      <div className="space-y-1 px-2">
-                        {availableReportChecks.filter(c => c.type === 'beam').map((check) => (
-                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
-                            <Checkbox
-                              id={`check-${check.id}`}
-                              checked={reportSelectedChecks.has(check.id)}
-                              onCheckedChange={() => toggleReportCheck(check.id)}
-                            />
-                            <label
-                              htmlFor={`check-${check.id}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
-                              {check.name}
-                            </label>
-                          </div>
-                        ))}
-                        {availableReportChecks.filter(c => c.type === 'beam').length === 0 && <div className="text-sm text-gray-400 pl-2">No beam checks</div>}
-                      </div>
-                    </div>
-
-                    {/* Geometry Checks Group */}
-                    <div>
-                      <div className="text-xs font-semibold text-gray-500 mb-2 mt-2 uppercase tracking-wide sticky top-0 bg-white z-10 py-1 px-2 border-b">Geometry Checks</div>
-                      <div className="space-y-1 px-2">
-                        {availableReportChecks.filter(c => c.type === 'geo').map((check) => (
-                          <div key={check.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
-                            <Checkbox
-                              id={`check-${check.id}`}
-                              checked={reportSelectedChecks.has(check.id)}
-                              onCheckedChange={() => toggleReportCheck(check.id)}
-                            />
-                            <label
-                              htmlFor={`check-${check.id}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
-                              {check.name}
-                            </label>
-                          </div>
-                        ))}
-                        {availableReportChecks.filter(c => c.type === 'geo').length === 0 && <div className="text-sm text-gray-400 pl-2">No geometry checks</div>}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-sm text-gray-500 p-2 text-center">Loading checks...</div>
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleSaveReport}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReportGenerationModal
+        open={isReportModalOpen}
+        onOpenChange={setIsReportModalOpen}
+        onSave={handleSaveReport}
+        dateRange={{ from: reportStartDate, to: reportEndDate }}
+        onDateRangeChange={(range) => {
+          if (range?.from) {
+            setReportStartDate(range.from);
+            setReportEndDate(range.to || range.from);
+          }
+        }}
+        availableChecks={availableReportChecks}
+        selectedChecks={reportSelectedChecks}
+        onToggleCheck={toggleReportCheck}
+        onToggleAll={toggleAllReportChecks}
+        onToggleGroup={(type, checked) => {
+          const checksOfType = availableReportChecks.filter(c => c.type === type).map(c => c.id);
+          setReportSelectedChecks(prev => {
+            const next = new Set(prev);
+            checksOfType.forEach(id => {
+              if (checked) next.add(id);
+              else next.delete(id);
+            });
+            return next;
+          });
+        }}
+      />
     </div>
   );
 }

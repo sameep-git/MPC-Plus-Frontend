@@ -13,17 +13,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  Label,
-  Checkbox,
+  // Label, // Handled by shared component
+  // Checkbox, // Handled by shared component
 } from '../../components/ui';
 import { UI_CONSTANTS } from '../../constants';
-// Hooks
 // Hooks
 import { useResultDetailData } from '../../hooks/useResultDetailData';
 import { useGraphData } from '../../hooks/useGraphData';
 import { mapBeamsToResults, mapGeoCheckToResults } from '../../lib/transformers/resultTransformers';
 // Components
 import { DateRangePicker } from '../../components/ui/date-range-picker';
+import { ReportGenerationModal } from '../../components/results/ReportGenerationModal'; // Import Shared Modal
 import { MetricTable } from '../../components/results/MetricTable';
 import { GraphSection } from '../../components/results/GraphSection';
 import { ResultHeader } from '../../components/results/ResultHeader';
@@ -215,8 +215,8 @@ function ResultDetailPageContent() {
 
   // --- Report Helpers ---
   const availableReportChecks = useMemo(() => [
-    ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' })),
-    ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' }))
+    ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' as const })),
+    ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' as const }))
   ], [beamResults, geoResults]);
 
   useEffect(() => {
@@ -308,6 +308,8 @@ function ResultDetailPageContent() {
   };
 
   const handleGenerateReport = () => {
+    setReportStartDate(new Date(selectedDate));
+    setReportEndDate(new Date(selectedDate));
     setIsReportModalOpen(true);
   };
 
@@ -348,6 +350,12 @@ function ResultDetailPageContent() {
           showGraph={showGraph}
           availableReportChecks={availableReportChecks}
           beamResults={beamResults}
+          // Pagination
+          checkCount={dailyGroups.length}
+          currentCheckIndex={activeCheckIndex}
+          onPrevCheck={() => setActiveCheckIndex(prev => Math.max(0, prev - 1))}
+          onNextCheck={() => setActiveCheckIndex(prev => Math.min(dailyGroups.length - 1, prev + 1))}
+          currentCheckTimestamp={dailyGroups[activeCheckIndex]?.timestamp}
         />
 
         {dataError && (
@@ -360,9 +368,6 @@ function ResultDetailPageContent() {
           <ResultList
             beamResults={beamResults}
             geoResults={geoResults}
-            dailyGroups={dailyGroups}
-            activeCheckIndex={activeCheckIndex}
-            setActiveCheckIndex={setActiveCheckIndex}
             expandedChecks={expandedChecks}
             toggleCheckExpand={toggleCheckExpand}
             selectedMetrics={selectedMetrics}
@@ -409,63 +414,34 @@ function ResultDetailPageContent() {
       </main>
 
       {/* Report Generation Modal */}
-      <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Generate Report</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Date Range</Label>
-              <DateRangePicker
-                date={{ from: reportStartDate, to: reportEndDate }}
-                setDate={(range: DateRange | undefined) => {
-                  if (range?.from) {
-                    setReportStartDate(range.from);
-                    setReportEndDate(range.to || range.from);
-                  }
-                }}
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Select Checks</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="select-all-checks"
-                    checked={isAllChecksSelected}
-                    onCheckedChange={(c) => toggleAllReportChecks(c as boolean)}
-                  />
-                  <label
-                    htmlFor="select-all-checks"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    Select All
-                  </label>
-                </div>
-              </div>
-              <div className="border rounded-md h-[200px] overflow-y-auto space-y-2 p-2">
-                {availableReportChecks.map(check => (
-                  <div key={check.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`report-${check.id}`}
-                      checked={reportSelectedChecks.has(check.id)}
-                      onCheckedChange={() => toggleReportCheck(check.id)}
-                    />
-                    <label htmlFor={`report-${check.id}`} className="text-sm cursor-pointer w-full">
-                      {check.name}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleSaveReport}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReportGenerationModal
+        open={isReportModalOpen}
+        onOpenChange={setIsReportModalOpen}
+        onSave={handleSaveReport}
+        dateRange={{ from: reportStartDate, to: reportEndDate }}
+        onDateRangeChange={(range) => {
+          if (range?.from) {
+            setReportStartDate(range.from);
+            setReportEndDate(range.to || range.from);
+          }
+        }}
+        availableChecks={availableReportChecks}
+        selectedChecks={reportSelectedChecks}
+        onToggleCheck={toggleReportCheck}
+        onToggleAll={toggleAllReportChecks}
+        onToggleGroup={(type, checked) => {
+          const checksOfType = availableReportChecks.filter(c => c.type === type).map(c => c.id);
+          setReportSelectedChecks(prev => {
+            const next = new Set(prev);
+            checksOfType.forEach(id => {
+              if (checked) next.add(id);
+              else next.delete(id);
+            });
+            return next;
+          });
+        }}
+        disableDateSelection={true}
+      />
 
       {/* Sign Off Modal (Paginated) */}
       <Dialog open={isSignOffModalOpen} onOpenChange={setIsSignOffModalOpen}>

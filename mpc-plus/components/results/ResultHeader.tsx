@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '../ui';
 import { UI_CONSTANTS } from '../../constants';
-import { LineChart as ChartIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LineChart as ChartIcon } from 'lucide-react';
 import type { CheckResult } from '../../models/CheckResult';
 
 interface ResultHeaderProps {
@@ -12,6 +12,12 @@ interface ResultHeaderProps {
     showGraph: boolean;
     availableReportChecks: { id: string; name: string; type: string }[];
     beamResults: CheckResult[];
+    // Pagination Props
+    checkCount: number;
+    currentCheckIndex: number;
+    onPrevCheck: () => void;
+    onNextCheck: () => void;
+    currentCheckTimestamp?: string;
 }
 
 export const ResultHeader: React.FC<ResultHeaderProps> = ({
@@ -21,7 +27,12 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
     onToggleGraph,
     showGraph,
     availableReportChecks,
-    beamResults
+    beamResults,
+    checkCount,
+    currentCheckIndex,
+    onPrevCheck,
+    onNextCheck,
+    currentCheckTimestamp
 }) => {
     const formatDate = (date: Date): string => {
         if (!date || isNaN(date.getTime())) return '';
@@ -30,12 +41,19 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
     return (
         <div className="mb-6">
-            <h1 className="text-4xl font-bold text-foreground mb-4">
-                MPC Results for {formatDate(selectedDate)}
-            </h1>
-            <p className="text-muted-foreground mb-6 max-w-2xl">
-                {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
-            </p>
+            <div className="flex justify-between items-start mb-4">
+                <div>
+                    <h1 className="text-4xl font-bold text-foreground">
+                        MPC Results for {formatDate(selectedDate)}
+                    </h1>
+                    <p className="text-muted-foreground mt-2 max-w-2xl">
+                        {UI_CONSTANTS.PLACEHOLDERS.MPC_RESULTS_DESCRIPTION}
+                    </p>
+                </div>
+
+
+            </div>
+
             <div className="flex items-center w-full gap-4 flex-wrap">
                 <Button
                     variant="outline"
@@ -45,6 +63,8 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                 >
                     {UI_CONSTANTS.BUTTONS.GENERATE_DAILY_REPORT}
                 </Button>
+
+
 
                 {(() => {
                     // Only beam checks are accepted.
@@ -92,7 +112,44 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                     Graph
                     <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
                 </Button>
+                {/* Pagination Controls */}
+                {checkCount > 1 && (
+                    <div className="flex items-center bg-white border rounded-lg p-0.5 shadow-sm h-10">
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={currentCheckIndex === 0}
+                            onClick={onPrevCheck}
+                            className="h-9 w-9"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <div className="flex flex-col items-center px-2 min-w-[100px] leading-tight">
+                            <span className="font-semibold text-xs">
+                                Check {currentCheckIndex + 1} of {checkCount}
+                            </span>
+                            {currentCheckTimestamp && (
+                                <span className="text-[10px] text-muted-foreground">
+                                    {(() => {
+                                        const utc = currentCheckTimestamp.endsWith('Z') ? currentCheckTimestamp : `${currentCheckTimestamp}Z`;
+                                        return new Date(utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    })()}
+                                </span>
+                            )}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={currentCheckIndex === checkCount - 1}
+                            onClick={onNextCheck}
+                            className="h-9 w-9"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </Button>
+                    </div>
+                )}
             </div>
         </div>
+
     );
 };
