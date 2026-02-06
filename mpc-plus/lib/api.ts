@@ -383,6 +383,45 @@ export const saveThreshold = async (threshold: Threshold): Promise<Threshold> =>
   }
 };
 
+// Report Generation API
+export interface ReportRequest {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  machineId: string;
+  selectedChecks: string[];
+}
+
+export const generateReport = async (payload: ReportRequest): Promise<Blob> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/reports/generate`;
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
+              ? { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY } 
+              : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`${res.status} ${res.statusText}: ${text}`);
+      }
+
+      return await res.blob();
+    }
+
+    throw new Error('Report generation only supported via Backend API');
+  } catch (err) {
+    console.error('[generateReport] Error:', err);
+    throw err;
+  }
+};
+
 // Error handling wrapper
 export const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
