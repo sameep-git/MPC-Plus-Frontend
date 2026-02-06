@@ -1,7 +1,7 @@
 import type { Beam } from '../../models/Beam';
 import type { GeoCheck } from '../../models/GeoCheck';
 import type { CheckResult, CheckMetric } from '../../models/CheckResult';
-import type { Threshold } from '../../lib/api';
+import type { Threshold, DocFactor } from '../../lib/api';
 
 /**
  * Formats metric values for display.
@@ -39,15 +39,37 @@ export const getMetricKey = (metricName: string): string => {
 };
 
 /**
- * Transforms a list of Beam objects into CheckResults for display.
+ * Finds the applicable DOC factor for a beam type based on beam_variant_id mapping.
+ * DOC factors map beam_variant_id to beam types (e.g., "6x", "10x").
  */
-export const mapBeamsToResults = (loadedBeams: Beam[], thresholds: Threshold[] = []): CheckResult[] => {
+const findDocFactorForBeamType = (beamType: string, docFactors: DocFactor[]): DocFactor | undefined => {
+    // DOC factors use beamVariantName which matches the beam type
+    return docFactors.find(df =>
+        df.beamVariantName?.toLowerCase() === beamType.toLowerCase() ||
+        df.beamVariantId?.toLowerCase() === beamType.toLowerCase()
+    );
+};
+
+/**
+ * Transforms a list of Beam objects into CheckResults for display.
+ * @param loadedBeams - List of beam checks to transform
+ * @param thresholds - Thresholds for pass/fail determination
+ * @param docFactors - DOC factors for calculating absolute output values
+ */
+export const mapBeamsToResults = (
+    loadedBeams: Beam[],
+    thresholds: Threshold[] = [],
+    docFactors: DocFactor[] = []
+): CheckResult[] => {
     const beamCheckResults: CheckResult[] = [];
 
     loadedBeams.forEach((beam, index) => {
         if (!beam || !beam.type) return;
         const type = beam.type;
         const metrics: CheckMetric[] = [];
+
+        // Find applicable DOC factor for this beam type
+        const docFactor = findDocFactorForBeamType(type, docFactors);
 
         if (beam.relOutput !== undefined && beam.relOutput !== null) {
             const name = createBeamSpecificMetricName('Relative Output', type);
@@ -57,7 +79,15 @@ export const mapBeamsToResults = (loadedBeams: Beam[], thresholds: Threshold[] =
             const status = (beam.relOutputStatus || 'pass').toLowerCase();
             const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Output');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : ''; // Assuming % for output
-            metrics.push({ name, value: beam.relOutput, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
+
+            // Calculate absolute output using DOC factor if available
+            let absoluteValue: string | number = '';
+            if (docFactor && docFactor.docFactorValue) {
+                const absOutput = beam.relOutput * docFactor.docFactorValue;
+                absoluteValue = absOutput.toFixed(4);
+            }
+
+            metrics.push({ name, value: beam.relOutput, thresholds: thresholdVal, absoluteValue, status: status as 'pass' | 'fail' | 'warning' });
         }
         if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
             const name = createBeamSpecificMetricName('Relative Uniformity', type);

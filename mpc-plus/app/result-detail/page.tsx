@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, approveGeoChecks, generateReport } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, type DocFactor } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -36,6 +36,7 @@ function ResultDetailPageContent() {
   // --- State & Hooks ---
   const [user, setUser] = useState<{ id: string; name?: string; role?: string } | null>(null);
   const { thresholds } = useThresholds();
+  const [docFactors, setDocFactors] = useState<DocFactor[]>([]);
 
   // Data Hook
   const {
@@ -75,6 +76,20 @@ function ResultDetailPageContent() {
 
   const { data: graphData, beams: allBeams, geoChecks: allGeoChecks, loading: dataLoading, error: dataError, refresh } = useGraphData(graphDateRange.start, graphDateRange.end, machineId);
 
+  // Fetch DOC factors for this machine
+  useEffect(() => {
+    const loadDocFactors = async () => {
+      if (!machineId) return;
+      try {
+        const factors = await fetchDocFactors(machineId);
+        setDocFactors(factors);
+      } catch (err) {
+        console.error('Failed to load DOC factors:', err);
+      }
+    };
+    loadDocFactors();
+  }, [machineId]);
+
   // Pagination State
   const [activeCheckIndex, setActiveCheckIndex] = useState(0);
 
@@ -103,8 +118,8 @@ function ResultDetailPageContent() {
     const group = dailyGroups[activeCheckIndex];
     // fallback to first if index out of bounds (safety)
     const beams = group ? group.beams : dailyGroups[0].beams;
-    return mapBeamsToResults(beams, thresholds);
-  }, [dailyGroups, activeCheckIndex, thresholds]);
+    return mapBeamsToResults(beams, thresholds, docFactors);
+  }, [dailyGroups, activeCheckIndex, thresholds, docFactors]);
 
 
   // Determine the timestamp of the currently selected beam check group

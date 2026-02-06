@@ -429,3 +429,245 @@ export const handleApiError = (error: unknown): string => {
   }
   return UI_CONSTANTS.ERRORS?.UNEXPECTED_ERROR ?? 'Unexpected error';
 };
+
+// ============================================
+// DOC Factor Types and API Functions
+// ============================================
+
+export interface DocFactor {
+  id?: string;
+  machineId: string;
+  beamVariantId: string;
+  beamVariantName?: string;
+  beamId: string;
+  msdAbs: number;
+  mpcRel: number;
+  docFactorValue: number;
+  measurementDate: string; // YYYY-MM-DD
+  startDate: string;       // YYYY-MM-DD
+  endDate?: string | null; // YYYY-MM-DD or null
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
+export interface BeamCheckOption {
+  id: string;
+  timestamp: string;
+  relOutput: number;
+  type: string;
+}
+
+export interface BeamVariantWithId {
+  id: string;
+  variant: string;
+}
+
+/**
+ * Fetch all DOC factors, optionally filtered by machine
+ */
+export const fetchDocFactors = async (machineId?: string): Promise<DocFactor[]> => {
+  try {
+    if (API_BASE) {
+      const url = machineId
+        ? `${API_BASE.replace(/\/$/, '')}/docfactors?machineId=${encodeURIComponent(machineId)}`
+        : `${API_BASE.replace(/\/$/, '')}/docfactors`;
+      return await safeFetch(url);
+    }
+
+    if (supabase) {
+      let query = supabase.from('doc').select('*');
+      if (machineId) {
+        query = query.eq('machine_id', machineId);
+      }
+      const { data, error } = await query.order('start_date', { ascending: false });
+      if (error) throw error;
+      return toCamelCase(data) as DocFactor[];
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[fetchDocFactors] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Get the applicable DOC factor for a specific date
+ */
+export const fetchApplicableDocFactor = async (
+  machineId: string,
+  beamVariantId: string,
+  date: string
+): Promise<DocFactor | null> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/docfactors/applicable?machineId=${encodeURIComponent(machineId)}&beamVariantId=${encodeURIComponent(beamVariantId)}&date=${encodeURIComponent(date)}`;
+      try {
+        return await safeFetch(url);
+      } catch (err) {
+        // 404 means no applicable factor found
+        if (err instanceof Error && err.message.includes('404')) {
+          return null;
+        }
+        throw err;
+      }
+    }
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('doc')
+        .select('*')
+        .eq('machine_id', machineId)
+        .eq('beam_variant_id', beamVariantId)
+        .lte('start_date', date)
+        .order('start_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // No rows
+        throw error;
+      }
+
+      // Check end_date condition
+      const doc = toCamelCase(data) as DocFactor;
+      if (doc.endDate && date >= doc.endDate) {
+        return null;
+      }
+      return doc;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[fetchApplicableDocFactor] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Create a new DOC factor
+ */
+export const createDocFactor = async (docFactor: Omit<DocFactor, 'id' | 'docFactorValue' | 'createdAt' | 'updatedAt'>): Promise<DocFactor> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/docfactors`;
+      return await safeFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docFactor),
+      });
+    }
+
+    throw new Error('DocFactor creation requires API backend');
+  } catch (err) {
+    console.error('[createDocFactor] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Update an existing DOC factor
+ */
+export const updateDocFactor = async (docFactor: DocFactor): Promise<DocFactor> => {
+  try {
+    if (!docFactor.id) throw new Error('DocFactor ID is required for update');
+
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/docfactors/${docFactor.id}`;
+      return await safeFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docFactor),
+      });
+    }
+
+    throw new Error('DocFactor update requires API backend');
+  } catch (err) {
+    console.error('[updateDocFactor] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Delete a DOC factor
+ */
+export const deleteDocFactor = async (id: string): Promise<void> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/docfactors/${id}`;
+      await safeFetch(url, { method: 'DELETE' });
+      return;
+    }
+
+    throw new Error('DocFactor deletion requires API backend');
+  } catch (err) {
+    console.error('[deleteDocFactor] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Fetch beam checks for a specific date/machine/beam type (for DOC factor selection)
+ */
+export const fetchBeamChecksForDate = async (
+  machineId: string,
+  beamType: string,
+  date: string
+): Promise<BeamCheckOption[]> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/beams/by-date?machineId=${encodeURIComponent(machineId)}&beamType=${encodeURIComponent(beamType)}&date=${encodeURIComponent(date)}`;
+      return await safeFetch(url);
+    }
+
+    if (supabase) {
+      const startOfDay = `${date}T00:00:00Z`;
+      const endOfDay = `${date}T23:59:59Z`;
+
+      const { data, error } = await supabase
+        .from('beams')
+        .select('id, timestamp, rel_output, type')
+        .eq('machine_id', machineId)
+        .eq('type', beamType)
+        .gte('timestamp', startOfDay)
+        .lte('timestamp', endOfDay)
+        .order('timestamp', { ascending: true });
+
+      if (error) throw error;
+      return (data || []).map((b: { id: string; timestamp: string; rel_output: number | null; type: string | null }) => ({
+        id: b.id,
+        timestamp: b.timestamp,
+        relOutput: b.rel_output ?? 0,
+        type: b.type ?? beamType
+      }));
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[fetchBeamChecksForDate] Error:', err);
+    throw err;
+  }
+};
+
+/**
+ * Fetch beam variants with their IDs
+ */
+export const fetchBeamVariantsWithIds = async (): Promise<BeamVariantWithId[]> => {
+  try {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('beam_variants')
+        .select('id, variant')
+        .order('variant', { ascending: true });
+
+      if (error) throw error;
+      return data as BeamVariantWithId[];
+    }
+
+    return [];
+  } catch (err) {
+    console.error('[fetchBeamVariantsWithIds] Error:', err);
+    throw err;
+  }
+};
