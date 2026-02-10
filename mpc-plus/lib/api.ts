@@ -56,18 +56,29 @@ const STORAGE_URL = process.env.NEXT_PUBLIC_STORAGE_URL || '';
 /**
  * Construct a URL to fetch a beam check image.
  *
+ * If the path is already a full URL (starts with http:// or https://),
+ * it is returned as-is (the DB may store complete Supabase Storage URLs).
+ *
  * When NEXT_PUBLIC_STORAGE_URL is set → builds a direct storage URL.
  * Otherwise → proxies through the backend at /api/image?path=<path>.
  */
 export const getImageUrl = (imagePath: string): string => {
+  // Sanitize: trim whitespace and trailing backslashes (JSON escaping artifacts)
+  const cleanPath = imagePath.trim().replace(/\\+$/, '');
+
+  // If already a full URL, use directly
+  if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+    return cleanPath;
+  }
+
   if (STORAGE_URL) {
     // Direct storage access (MinIO or Supabase public bucket)
     const base = STORAGE_URL.replace(/\/$/, '');
-    return `${base}/${imagePath}`;
+    return `${base}/${cleanPath}`;
   }
   // Backend proxy (default — backend routes to MinIO or Supabase internally)
   const base = API_BASE.replace(/\/$/, '');
-  return `${base}/image?path=${encodeURIComponent(imagePath)}`;
+  return `${base}/image?path=${encodeURIComponent(cleanPath)}`;
 };
 
 const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
