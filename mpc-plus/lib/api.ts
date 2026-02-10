@@ -66,13 +66,48 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
     if (supabase) {
       const { data, error } = await supabase.from('machines').select('*');
       if (error) throw error;
-      return data as MachineType[];
+      return toCamelCase(data) as MachineType[];
     }
 
     // Last fallback: return empty array but signal with console (keeps UI from crashing)
     console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
     return [];
   } catch (err) {
+    console.error('[fetchMachines] Error:', err);
+    throw err;
+  }
+};
+
+export const updateMachine = async (machine: MachineType): Promise<void> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/machines/${machine.id}`;
+      await safeFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(machine),
+      });
+      return;
+    }
+
+    if (supabase) {
+      // Map camelCase model back to snake_case for DB
+      const payload = {
+        name: machine.name,
+        location: machine.location,
+        type: machine.type,
+      };
+
+      const { error } = await supabase
+        .from('machines')
+        .update(payload)
+        .eq('id', machine.id);
+
+      if (error) throw error;
+      return;
+    }
+  } catch (err) {
+    console.error('[updateMachine] Error:', err);
     throw err;
   }
 };
@@ -113,7 +148,7 @@ export const fetchResults = async (month: number, year: number, machineId: strin
         .select('*')
         .eq('month', month)
         .eq('year', year)
-        .eq('machineId', machineId);
+        .eq('machine_id', machineId);
       if (error) throw error;
       return data;
     }
@@ -175,21 +210,37 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<CheckGroup[]
       if (params.date) url.searchParams.set('date', params.date);
       if (params.startDate) url.searchParams.set('startDate', params.startDate);
       if (params.endDate) url.searchParams.set('endDate', params.endDate);
-      if (params.startDate) url.searchParams.set('startDate', params.startDate);
-      if (params.endDate) url.searchParams.set('endDate', params.endDate);
       const data = await safeFetch(url.toString());
       return toCamelCase(data);
     }
 
     if (supabase) {
-      let query = supabase.from('beams').select('*').eq('type', params.type).eq('machineId', params.machineId);
+      // Join beam_variants via typeID FK to get the variant name
+      let query = supabase
+        .from('beams')
+        .select('*, beam_variants(variant)')
+        .eq('machine_id', params.machineId);
+      if (params.type) {
+        // Filter by variant name through the FK join
+        query = query.eq('beam_variants.variant', params.type);
+      }
       if (params.date) query = query.eq('date', params.date);
       if (params.startDate) query = query.gte('date', params.startDate);
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
+
+      // Map beam_variants join data onto the beam's type field
+      const mapped = (data || []).map((beam: Record<string, unknown>) => {
+        const variants = beam.beam_variants as { variant: string } | null;
+        return {
+          ...beam,
+          type: variants?.variant ?? beam.type, // Prefer joined variant name
+        };
+      });
+
       // Note: Supabase direct fallback does not support grouping yet.
-      return data as unknown as CheckGroup[];
+      return toCamelCase(mapped) as unknown as CheckGroup[];
     }
 
     return [] as CheckGroup[];
@@ -219,7 +270,7 @@ export const approveBeams = async (beamIds: string[], approvedBy: string): Promi
         .from('beams')
         .update({
           approved_by: approvedBy,
-          approved_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+          approved_date: new Date().toISOString() // Full ISO timestamp
         })
         .in('id', beamIds)
         .select();
@@ -285,21 +336,20 @@ export const fetchGeoChecks = async (params: FetchGeoChecksParams): Promise<GeoC
       if (params.date) url.searchParams.set('date', params.date);
       if (params.startDate) url.searchParams.set('start-date', params.startDate);
       if (params.endDate) url.searchParams.set('end-date', params.endDate);
-      if (params.startDate) url.searchParams.set('start-date', params.startDate);
-      if (params.endDate) url.searchParams.set('end-date', params.endDate);
       const data = await safeFetch(url.toString());
       return toCamelCase(data);
     }
 
     if (supabase) {
-      let query = supabase.from('geochecks').select('*').eq('machine_id', params.machineId);
+      // Use geochecks_full view to get MLC leaf data from child tables
+      let query = supabase.from('geochecks_full').select('*').eq('machine_id', params.machineId);
       if (params.type) query = query.eq('type', params.type);
       if (params.date) query = query.eq('date', params.date);
       if (params.startDate) query = query.gte('date', params.startDate);
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as GeoCheckType[];
+      return toCamelCase(data) as unknown as GeoCheckType[];
     }
 
     return [] as GeoCheckType[];
@@ -313,7 +363,8 @@ export interface Threshold {
   id?: string;
   machineId: string;
   checkType: 'geometry' | 'beam';
-  beamVariant?: string;
+  beamVariant?: string;           // legacy string name
+  beamVariantId?: string;         // UUID FK → beam_variants.id
   metricType: string;
   value: number;
   lastUpdated?: string;
@@ -327,9 +378,20 @@ export const fetchThresholds = async (): Promise<Threshold[]> => {
     }
 
     if (supabase) {
-      const { data, error } = await supabase.from('thresholds').select('*');
+      const { data, error } = await supabase
+        .from('thresholds')
+        .select('*, beam_variants(variant)');
       if (error) throw error;
-      return toCamelCase(data);
+      // Map the joined variant name onto beam_variant field for backward compat
+      const mapped = (data || []).map((d: Record<string, unknown>) => {
+        const bv = d.beam_variants as { variant: string } | null;
+        return {
+          ...d,
+          beam_variant: bv?.variant ?? d.beam_variant ?? null,
+          beam_variants: undefined,
+        };
+      });
+      return toCamelCase(mapped);
     }
 
     return [];
@@ -360,6 +422,7 @@ export const saveThreshold = async (threshold: Threshold): Promise<Threshold> =>
         machine_id: threshold.machineId,
         check_type: threshold.checkType,
         beam_variant: threshold.beamVariant,
+        beam_variant_id: threshold.beamVariantId ?? null,
         metric_type: threshold.metricType,
         value: threshold.value,
         last_updated: new Date().toISOString(),
@@ -395,14 +458,14 @@ export const generateReport = async (payload: ReportRequest): Promise<Blob> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/reports/generate`;
-      
+
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
-              ? { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY } 
-              : {})
+          ...(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+            ? { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }
+            : {})
         },
         body: JSON.stringify(payload)
       });
@@ -442,7 +505,7 @@ export interface DocFactor {
   beamId: string;
   msdAbs: number;
   mpcRel: number;
-  docFactorValue: number;
+  docFactor: number;            // DB column: doc_factor → toCamelCase → docFactor
   measurementDate: string; // YYYY-MM-DD
   startDate: string;       // YYYY-MM-DD
   endDate?: string | null; // YYYY-MM-DD or null
@@ -464,6 +527,35 @@ export interface BeamVariantWithId {
 }
 
 /**
+ * Normalizes a raw doc factor object to match the DocFactor interface.
+ * Handles field name differences between Supabase (doc_factor) and C# API (DocFactorValue).
+ * Also parses Supabase numeric strings to proper numbers.
+ */
+const normalizeDocFactor = (raw: Record<string, unknown>): DocFactor => {
+  // Resolve docFactor value - could be docFactor (Supabase) or docFactorValue (C# API)
+  const docFactorVal = raw.docFactor ?? raw.docFactorValue ?? raw.doc_factor ?? raw.DocFactorValue ?? raw.DocFactor;
+  const msdAbsVal = raw.msdAbs ?? raw.msd_abs ?? raw.MsdAbs;
+  const mpcRelVal = raw.mpcRel ?? raw.mpc_rel ?? raw.MpcRel;
+
+  return {
+    id: raw.id as string | undefined,
+    machineId: (raw.machineId ?? raw.machine_id) as string,
+    beamVariantId: (raw.beamVariantId ?? raw.beam_variant_id) as string,
+    beamVariantName: (raw.beamVariantName ?? raw.beam_variant_name) as string | undefined,
+    beamId: (raw.beamId ?? raw.beam_id) as string,
+    msdAbs: typeof msdAbsVal === 'string' ? parseFloat(msdAbsVal) : (msdAbsVal as number) ?? 0,
+    mpcRel: typeof mpcRelVal === 'string' ? parseFloat(mpcRelVal) : (mpcRelVal as number) ?? 0,
+    docFactor: typeof docFactorVal === 'string' ? parseFloat(docFactorVal) : (docFactorVal as number) ?? 0,
+    measurementDate: (raw.measurementDate ?? raw.measurement_date) as string,
+    startDate: (raw.startDate ?? raw.start_date) as string,
+    endDate: (raw.endDate ?? raw.end_date) as string | null | undefined,
+    createdAt: (raw.createdAt ?? raw.created_at) as string | undefined,
+    updatedAt: (raw.updatedAt ?? raw.updated_at) as string | undefined,
+    createdBy: (raw.createdBy ?? raw.created_by) as string | undefined,
+  };
+};
+
+/**
  * Fetch all DOC factors, optionally filtered by machine
  */
 export const fetchDocFactors = async (machineId?: string): Promise<DocFactor[]> => {
@@ -472,17 +564,47 @@ export const fetchDocFactors = async (machineId?: string): Promise<DocFactor[]> 
       const url = machineId
         ? `${API_BASE.replace(/\/$/, '')}/docfactors?machineId=${encodeURIComponent(machineId)}`
         : `${API_BASE.replace(/\/$/, '')}/docfactors`;
-      return await safeFetch(url);
+      const raw = await safeFetch(url);
+      const arr = Array.isArray(raw) ? raw : [raw];
+      const factors = arr.map((d: Record<string, unknown>) => normalizeDocFactor(toCamelCase(d)));
+
+      // C# API doesn't return variant names — resolve from beam_variants
+      const missingNames = factors.some(f => !f.beamVariantName && f.beamVariantId);
+      if (missingNames) {
+        try {
+          const variants = await fetchBeamVariantsWithIds();
+          for (const f of factors) {
+            if (!f.beamVariantName && f.beamVariantId) {
+              const match = variants.find(v => v.id === f.beamVariantId);
+              if (match) f.beamVariantName = match.variant;
+            }
+          }
+        } catch (e) {
+          console.warn('[fetchDocFactors] Could not resolve variant names:', e);
+        }
+      }
+
+      return factors;
     }
 
     if (supabase) {
-      let query = supabase.from('doc').select('*');
+      // Join beam_variants to get variant name for DOC factor matching
+      let query = supabase.from('doc').select('*, beam_variants(variant)');
       if (machineId) {
         query = query.eq('machine_id', machineId);
       }
       const { data, error } = await query.order('start_date', { ascending: false });
       if (error) throw error;
-      return toCamelCase(data) as DocFactor[];
+      // Map the joined variant name onto beamVariantName
+      const mapped = (data || []).map((d: Record<string, unknown>) => {
+        const bv = d.beam_variants as { variant: string } | null;
+        return {
+          ...d,
+          beam_variant_name: bv?.variant ?? null,
+          beam_variants: undefined, // Remove nested join object
+        };
+      });
+      return mapped.map((d: Record<string, unknown>) => normalizeDocFactor(toCamelCase(d)));
     }
 
     return [];
@@ -548,7 +670,7 @@ export const fetchApplicableDocFactor = async (
 /**
  * Create a new DOC factor
  */
-export const createDocFactor = async (docFactor: Omit<DocFactor, 'id' | 'docFactorValue' | 'createdAt' | 'updatedAt'>): Promise<DocFactor> => {
+export const createDocFactor = async (docFactor: Omit<DocFactor, 'id' | 'docFactor' | 'createdAt' | 'updatedAt'>): Promise<DocFactor> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/docfactors`;
@@ -625,21 +747,22 @@ export const fetchBeamChecksForDate = async (
       const startOfDay = `${date}T00:00:00Z`;
       const endOfDay = `${date}T23:59:59Z`;
 
+      // Join beam_variants to get variant name, filter by variant instead of type text
       const { data, error } = await supabase
         .from('beams')
-        .select('id, timestamp, rel_output, type')
+        .select('id, timestamp, rel_output, type, beam_variants(variant)')
         .eq('machine_id', machineId)
-        .eq('type', beamType)
+        .eq('beam_variants.variant', beamType)
         .gte('timestamp', startOfDay)
         .lte('timestamp', endOfDay)
         .order('timestamp', { ascending: true });
 
       if (error) throw error;
-      return (data || []).map((b: { id: string; timestamp: string; rel_output: number | null; type: string | null }) => ({
+      return (data || []).map((b: { id: string; timestamp: string; rel_output: number | null; type: string | null; beam_variants: { variant: string } | null }) => ({
         id: b.id,
         timestamp: b.timestamp,
         relOutput: b.rel_output ?? 0,
-        type: b.type ?? beamType
+        type: b.beam_variants?.variant ?? b.type ?? beamType
       }));
     }
 

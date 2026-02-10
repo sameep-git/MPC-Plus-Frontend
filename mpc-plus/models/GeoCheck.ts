@@ -1,4 +1,8 @@
 
+// Types for MLC data from geochecks_full view (JSON arrays)
+export interface MlcLeafEntry { leafNumber: number; value: number; }
+export interface MlcBacklashEntry { leafNumber: number; value: number; }
+
 export interface GeoCheck {
     id: string;
     type: string;
@@ -55,16 +59,19 @@ export interface GeoCheck {
     jawParallelismY1?: number;
     jawParallelismY2?: number;
 
-    // Detailed MLC Data (Leaf11 - Leaf50)
-    mlcLeavesA?: Record<string, number>;
-    mlcLeavesB?: Record<string, number>;
-    mlcBacklashA?: Record<string, number>;
-    mlcBacklashB?: Record<string, number>;
+    // Detailed MLC Data — can arrive as Record<string, number> from direct table
+    // or as array of {leafNumber, value} objects from geochecks_full view
+    mlcLeavesA?: Record<string, number> | MlcLeafEntry[] | null;
+    mlcLeavesB?: Record<string, number> | MlcLeafEntry[] | null;
+    mlcBacklashA?: Record<string, number> | MlcBacklashEntry[] | null;
+    mlcBacklashB?: Record<string, number> | MlcBacklashEntry[] | null;
 
     // Metric Statuses
     metricStatuses?: Record<string, string>;
 
     note?: string;
+    approvedBy?: string;
+    approvedDate?: string;
     createdAt?: string;
     updatedAt?: string;
 }

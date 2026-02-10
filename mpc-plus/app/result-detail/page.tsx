@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, type DocFactor } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, generateReport, type DocFactor } from '../../lib/api';
 import {
   Navbar,
   Button,

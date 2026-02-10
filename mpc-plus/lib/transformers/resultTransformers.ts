@@ -1,7 +1,25 @@
 import type { Beam } from '../../models/Beam';
-import type { GeoCheck } from '../../models/GeoCheck';
+import type { GeoCheck, MlcLeafEntry, MlcBacklashEntry } from '../../models/GeoCheck';
 import type { CheckResult, CheckMetric } from '../../models/CheckResult';
 import type { Threshold, DocFactor } from '../../lib/api';
+
+/**
+ * Normalizes MLC data from either Record<string, number> (direct table)
+ * or [{leafNumber, value}] array (geochecks_full view) into Record<string, number>.
+ */
+const normalizeMlcData = (
+    data: Record<string, number> | MlcLeafEntry[] | MlcBacklashEntry[] | null | undefined
+): Record<string, number> | null => {
+    if (!data) return null;
+    if (Array.isArray(data)) {
+        const record: Record<string, number> = {};
+        data.forEach((entry: { leafNumber: number; value: number }) => {
+            record[String(entry.leafNumber)] = entry.value;
+        });
+        return Object.keys(record).length > 0 ? record : null;
+    }
+    return data;
+};
 
 /**
  * Formats metric values for display.
@@ -39,14 +57,18 @@ export const getMetricKey = (metricName: string): string => {
 };
 
 /**
- * Finds the applicable DOC factor for a beam type based on beam_variant_id mapping.
- * DOC factors map beam_variant_id to beam types (e.g., "6x", "10x").
+ * Finds the applicable DOC factor for a beam type.
+ * Matches by UUID (typeID → beamVariantId) first, then falls back to string name.
  */
-const findDocFactorForBeamType = (beamType: string, docFactors: DocFactor[]): DocFactor | undefined => {
-    // DOC factors use beamVariantName which matches the beam type
+const findDocFactorForBeamType = (beamType: string, docFactors: DocFactor[], typeID?: string): DocFactor | undefined => {
+    // 1. Prefer UUID match: beam.typeID === docFactor.beamVariantId
+    if (typeID) {
+        const uuidMatch = docFactors.find(df => df.beamVariantId === typeID);
+        if (uuidMatch) return uuidMatch;
+    }
+    // 2. Fallback: string name match
     return docFactors.find(df =>
-        df.beamVariantName?.toLowerCase() === beamType.toLowerCase() ||
-        df.beamVariantId?.toLowerCase() === beamType.toLowerCase()
+        df.beamVariantName?.toLowerCase() === beamType.toLowerCase()
     );
 };
 
@@ -68,22 +90,19 @@ export const mapBeamsToResults = (
         const type = beam.type;
         const metrics: CheckMetric[] = [];
 
-        // Find applicable DOC factor for this beam type
-        const docFactor = findDocFactorForBeamType(type, docFactors);
+        // Find applicable DOC factor for this beam type (prefer UUID match)
+        const docFactor = findDocFactorForBeamType(type, docFactors, beam.typeID);
 
         if (beam.relOutput !== undefined && beam.relOutput !== null) {
             const name = createBeamSpecificMetricName('Relative Output', type);
-            // Use backend status if available, else default to 'pass' (or 'PASS' to match backend casing usually)
-            // Backend returns "PASS"/"FAIL" usually uppercase based on my C# code?
-            // C# code: "PASS", "FAIL".
             const status = (beam.relOutputStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Output');
-            const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : ''; // Assuming % for output
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Relative Output');
+            const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : '';
 
             // Calculate absolute output using DOC factor if available
             let absoluteValue: string | number = '';
-            if (docFactor && docFactor.docFactorValue) {
-                const absOutput = beam.relOutput * docFactor.docFactorValue;
+            if (docFactor && docFactor.docFactor) {
+                const absOutput = beam.relOutput * docFactor.docFactor;
                 absoluteValue = absOutput.toFixed(4);
             }
 
@@ -92,14 +111,14 @@ export const mapBeamsToResults = (
         if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
             const name = createBeamSpecificMetricName('Relative Uniformity', type);
             const status = (beam.relUniformityStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Uniformity');
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Relative Uniformity');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : '';
             metrics.push({ name, value: beam.relUniformity, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
         if (beam.centerShift !== undefined && beam.centerShift !== null) {
             const name = createBeamSpecificMetricName('Center Shift', type);
             const status = (beam.centerShiftStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Center Shift');
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Center Shift');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(3)}` : '';
             metrics.push({ name, value: beam.centerShift, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
@@ -216,8 +235,9 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     const mlcStatus = (metricStatuses['mlc_leaf_position'] || 'PASS').toLowerCase() as 'pass' | 'fail';
 
     const mlcAMetrics: CheckMetric[] = [];
-    if (gc.mlcLeavesA) {
-        Object.entries(gc.mlcLeavesA).forEach(([key, val]) => {
+    const normalizedLeavesA = normalizeMlcData(gc.mlcLeavesA);
+    if (normalizedLeavesA) {
+        Object.entries(normalizedLeavesA).forEach(([key, val]) => {
             // We don't know specific leaf status, so we default to PASS unless we want to be aggressive?
             // Or we just don't show red on the leaf row, but show red on the group.
             // Let's default leaves to pass visually, but group will be fail if backend says so.
@@ -233,14 +253,15 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     geoLeaves.push({
         id: 'geo-mlc-a',
         name: 'MLC Leaves A',
-        status: (gc.mlcLeavesA && metricStatuses['mlc_leaf_position']) === 'FAIL' ? 'FAIL' : 'PASS',
+        status: (normalizedLeavesA && metricStatuses['mlc_leaf_position']) === 'FAIL' ? 'FAIL' : 'PASS',
         metrics: mlcAMetrics
     });
 
     // MLC Leaves B
     const mlcBMetrics: CheckMetric[] = [];
-    if (gc.mlcLeavesB) {
-        Object.entries(gc.mlcLeavesB).forEach(([key, val]) => {
+    const normalizedLeavesB = normalizeMlcData(gc.mlcLeavesB);
+    if (normalizedLeavesB) {
+        Object.entries(normalizedLeavesB).forEach(([key, val]) => {
             const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_leaf_position');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}` : '';
             mlcBMetrics.push({ name: `MLC B Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
@@ -249,7 +270,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     geoLeaves.push({
         id: 'geo-mlc-b',
         name: 'MLC Leaves B',
-        status: (gc.mlcLeavesB && metricStatuses['mlc_leaf_position']) === 'FAIL' ? 'FAIL' : 'PASS',
+        status: (normalizedLeavesB && metricStatuses['mlc_leaf_position']) === 'FAIL' ? 'FAIL' : 'PASS',
         metrics: mlcBMetrics
     });
 
@@ -264,8 +285,9 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     // Backlash Leaves A
     // Key: mlc_backlash
     const backlashAMetrics: CheckMetric[] = [];
-    if (gc.mlcBacklashA) {
-        Object.entries(gc.mlcBacklashA).forEach(([key, val]) => {
+    const normalizedBacklashA = normalizeMlcData(gc.mlcBacklashA);
+    if (normalizedBacklashA) {
+        Object.entries(normalizedBacklashA).forEach(([key, val]) => {
             const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(2)}` : ''; // Backlash usually has max limit
             backlashAMetrics.push({ name: `Backlash A Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
@@ -274,14 +296,15 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     geoLeaves.push({
         id: 'geo-backlash-a',
         name: 'Backlash Leaves A',
-        status: (gc.mlcBacklashA && metricStatuses['mlc_backlash']) === 'FAIL' ? 'FAIL' : 'PASS',
+        status: (normalizedBacklashA && metricStatuses['mlc_backlash']) === 'FAIL' ? 'FAIL' : 'PASS',
         metrics: backlashAMetrics
     });
 
     // Backlash Leaves B
     const backlashBMetrics: CheckMetric[] = [];
-    if (gc.mlcBacklashB) {
-        Object.entries(gc.mlcBacklashB).forEach(([key, val]) => {
+    const normalizedBacklashB = normalizeMlcData(gc.mlcBacklashB);
+    if (normalizedBacklashB) {
+        Object.entries(normalizedBacklashB).forEach(([key, val]) => {
             const threshold = thresholds.find(t => t.checkType === 'geometry' && t.metricType === 'mlc_backlash');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(2)}` : '';
             backlashBMetrics.push({ name: `Backlash B Leaf ${key}`, value: val as number, thresholds: thresholdVal, absoluteValue: '', status: 'pass' });
@@ -290,7 +313,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
     geoLeaves.push({
         id: 'geo-backlash-b',
         name: 'Backlash Leaves B',
-        status: (gc.mlcBacklashB && metricStatuses['mlc_backlash']) === 'FAIL' ? 'FAIL' : 'PASS',
+        status: (normalizedBacklashB && metricStatuses['mlc_backlash']) === 'FAIL' ? 'FAIL' : 'PASS',
         metrics: backlashBMetrics
     });
 

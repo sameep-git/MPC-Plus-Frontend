@@ -22,10 +22,10 @@ export const MetricTable: React.FC<MetricTableProps> = ({
             <Table className="table-fixed w-full">
                 <TableHeader>
                     <TableRow>
-                        <TableHead className="w-1/2">Metric</TableHead>
-                        <TableHead className="w-1/4 text-right">Value</TableHead>
-                        <TableHead className="w-1/4 text-right">Threshold</TableHead>
-                        {showAbsolute && <TableHead className="w-20 text-right">Abs</TableHead>}
+                        <TableHead className={showAbsolute ? 'w-[40%]' : 'w-1/2'}>Metric</TableHead>
+                        <TableHead className={`${showAbsolute ? 'w-[20%]' : 'w-1/4'} text-right`}>Value</TableHead>
+                        <TableHead className={`${showAbsolute ? 'w-[20%]' : 'w-1/4'} text-right`}>Threshold</TableHead>
+                        {showAbsolute && <TableHead className="w-[20%] text-right">Abs</TableHead>}
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -58,7 +58,7 @@ export const MetricTable: React.FC<MetricTableProps> = ({
                             </TableCell>
                             <TableCell className="text-right">{formatMetricValue(m.name, m.value)}</TableCell>
                             <TableCell className="text-right text-muted-foreground text-sm">{m.thresholds || '-'}</TableCell>
-                            {showAbsolute && <TableCell>{m.absoluteValue || '-'}</TableCell>}
+                            {showAbsolute && <TableCell className="text-right">{m.absoluteValue || '-'}</TableCell>}
                         </TableRow>
                     ))}
                 </TableBody>

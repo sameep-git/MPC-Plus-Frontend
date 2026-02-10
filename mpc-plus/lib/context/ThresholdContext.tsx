@@ -41,24 +41,18 @@ export function ThresholdProvider({ children }: { children: React.ReactNode }) {
         metricType: string,
         beamVariant?: string
     ): number | null => {
-        // Find matching threshold
-        // Priority: Specific beam variant > General (no variant)
-        // Note: The API/DB might store metrics slightly differently, so fuzzy matching might be needed eventually.
-        // For now, strict matching based on how we expect to query.
-
-        // Normalize metric type for comparison if needed (e.g. lowercase)
         const normalizedMetric = metricType.toLowerCase();
 
-        // 1. Try exact match with variant
+        // 1. Try matching by beamVariantId (UUID) if the beamVariant looks like a UUID
+        // or try string match on both beamVariantId and beamVariant
         let match = thresholds.find(t =>
             t.machineId === machineId &&
             t.checkType === checkType &&
             t.metricType.toLowerCase() === normalizedMetric &&
-            t.beamVariant === beamVariant
+            (t.beamVariantId === beamVariant || t.beamVariant === beamVariant)
         );
 
-        // 2. If not found and variants don't matter (or fallback logic applies), maybe try without variant?
-        // Usually thresholds are specific to variants for beams. For geometry, beamVariant might be undefined.
+        // 2. Fallback: geometry checks (no variant)
         if (!match && !beamVariant) {
             match = thresholds.find(t =>
                 t.machineId === machineId &&
@@ -67,7 +61,7 @@ export function ThresholdProvider({ children }: { children: React.ReactNode }) {
             );
         }
 
-        return match ? match.value : null;
+        return match ? match.value ?? null : null;
     };
 
     const refreshThresholds = async () => {

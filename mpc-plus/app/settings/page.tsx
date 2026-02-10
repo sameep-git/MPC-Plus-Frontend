@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, fetchBeamTypes, type Threshold } from '../../lib/api';
+import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, fetchBeamVariantsWithIds, type Threshold, type BeamVariantWithId } from '../../lib/api';
 import DocFactorSettings from '../../components/settings/DocFactorSettings';
+import MachineSettings from '../../components/settings/MachineSettings';
 import type { Machine } from '../../models/Machine';
 import {
   Navbar,
@@ -104,6 +105,7 @@ const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: st
 
 const SETTINGS_SECTIONS = [
   { id: 'theme-settings', label: 'Theme & Accent' },
+  { id: 'machine-settings', label: 'Machine Management' },
   { id: 'beam-threshold-settings', label: 'Threshold Configuration' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
@@ -122,8 +124,8 @@ export default function SettingsPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>('default-machine');
   const [checkType, setCheckType] = useState<'beam' | 'geometry'>('beam');
-  const [beamVariants, setBeamVariants] = useState<string[]>([]);
-  const [beamVariant, setBeamVariant] = useState<string>('6x');
+  const [beamVariants, setBeamVariants] = useState<BeamVariantWithId[]>([]);
+  const [beamVariant, setBeamVariant] = useState<string>('');  // stores UUID
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingThresholds, setLoadingThresholds] = useState(false);
   const [savingThresholds, setSavingThresholds] = useState(false);
@@ -149,17 +151,19 @@ export default function SettingsPage() {
     const loadData = async () => {
       try {
         setLoadingThresholds(true);
-        const [machinesData, thresholdsData, beamTypesData] = await Promise.all([
+        const [machinesData, thresholdsData, beamVariantsData] = await Promise.all([
           fetchMachines(),
           fetchThresholds(),
-          fetchBeamTypes()
+          fetchBeamVariantsWithIds()
         ]);
 
         setMachines(machinesData);
-        setBeamVariants(beamTypesData);
+        setBeamVariants(beamVariantsData);
         if (machinesData.length > 0 && selectedMachineId === 'default-machine') {
-          // Default to first machine if we are on default and real machines exist
           setSelectedMachineId(machinesData[0].id);
+        }
+        if (beamVariantsData.length > 0 && !beamVariant) {
+          setBeamVariant(beamVariantsData[0].id); // default to first variant UUID
         }
 
         setThresholds(thresholdsData);
@@ -302,7 +306,7 @@ export default function SettingsPage() {
         t.machineId === selectedMachineId &&
         t.checkType === checkType &&
         t.metricType === metric &&
-        (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+        (checkType === 'beam' ? (t.beamVariantId === beamVariant || t.beamVariant === beamVariant) : true)
     );
     return found?.value ?? 0;
   };
@@ -316,16 +320,18 @@ export default function SettingsPage() {
           t.machineId === selectedMachineId &&
           t.checkType === checkType &&
           t.metricType === metric &&
-          (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+          (checkType === 'beam' ? (t.beamVariantId === beamVariant || t.beamVariant === beamVariant) : true)
       );
       console.log('[updateThresholdValue] Found existing at index:', existingIndex);
 
+      const selectedVariant = beamVariants.find(v => v.id === beamVariant);
       const newItem: Threshold = {
         id: existingIndex >= 0 ? prev[existingIndex].id : undefined,
         machineId: selectedMachineId,
         checkType,
         metricType: metric,
-        beamVariant: checkType === 'beam' ? beamVariant : undefined,
+        beamVariant: checkType === 'beam' ? selectedVariant?.variant : undefined,
+        beamVariantId: checkType === 'beam' ? beamVariant : undefined,
         value,
         lastUpdated: new Date().toISOString(),
       };
@@ -369,7 +375,7 @@ export default function SettingsPage() {
               t.machineId === selectedMachineId &&
               t.checkType === checkType &&
               t.metricType === metric &&
-              (checkType === 'beam' ? t.beamVariant === beamVariant : true)
+              (checkType === 'beam' ? (t.beamVariantId === beamVariant || t.beamVariant === beamVariant) : true)
           );
 
           if (threshold) {
@@ -378,11 +384,13 @@ export default function SettingsPage() {
           } else {
             const val = getThresholdValue(metric);
             console.log('[handleSaveThresholds] Creating new threshold:', { metric, value: val });
+            const selectedVariant = beamVariants.find(v => v.id === beamVariant);
             const newItem: Threshold = {
               machineId: selectedMachineId,
               checkType,
               metricType: metric,
-              beamVariant: checkType === 'beam' ? beamVariant : undefined,
+              beamVariant: checkType === 'beam' ? selectedVariant?.variant : undefined,
+              beamVariantId: checkType === 'beam' ? beamVariant : undefined,
               value: val,
             };
             await saveThreshold(newItem);
@@ -419,7 +427,8 @@ export default function SettingsPage() {
             machineId: selectedMachineId,
             checkType: 'beam',
             metricType: metric,
-            beamVariant: variant,
+            beamVariant: variant.variant,
+            beamVariantId: variant.id,
             value: val,
           };
           await saveThreshold(newItem);
@@ -516,9 +525,6 @@ export default function SettingsPage() {
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            The application is locked to Light mode for consistency.
-          </p>
           <div className="max-w-md">
             <Label className="mb-2 block">Accent Color</Label>
             <Select
@@ -543,6 +549,14 @@ export default function SettingsPage() {
               </SelectContent>
             </Select>
           </div>
+        </section>
+
+        {/* Machine Settings */}
+        <section
+          id="machine-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
+          <MachineSettings />
         </section>
 
         {/* Threshold Configuration */}
@@ -601,7 +615,7 @@ export default function SettingsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {beamVariants.map(v => (
-                          <SelectItem key={v} value={v}>{v}</SelectItem>
+                          <SelectItem key={v.id} value={v.id}>{v.variant}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
