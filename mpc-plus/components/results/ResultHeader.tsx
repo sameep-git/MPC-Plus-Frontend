@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '../ui';
 import { UI_CONSTANTS } from '../../constants';
-import { ChevronLeft, ChevronRight, LineChart as ChartIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LineChart as ChartIcon, Image as ImageIcon } from 'lucide-react';
 import type { CheckResult } from '../../models/CheckResult';
 
 interface ResultHeaderProps {
@@ -10,6 +10,9 @@ interface ResultHeaderProps {
     onApprove: () => void;
     onToggleGraph: () => void;
     showGraph: boolean;
+    onToggleImages: () => void;
+    showImages: boolean;
+    hasImages: boolean;
     availableReportChecks: { id: string; name: string; type: string }[];
     beamResults: CheckResult[];
     // Pagination Props
@@ -26,6 +29,9 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
     onApprove,
     onToggleGraph,
     showGraph,
+    onToggleImages,
+    showImages,
+    hasImages,
     availableReportChecks,
     beamResults,
     checkCount,
@@ -112,6 +118,20 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                     Graph
                     <ChartIcon className={`ml-2 h-5 w-5 ${showGraph ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
                 </Button>
+
+                {hasImages && (
+                    <Button
+                        onClick={onToggleImages}
+                        size="lg"
+                        variant={showImages ? "secondary" : "outline"}
+                        className={showImages
+                            ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                            : "text-muted-foreground border-gray-300 hover:bg-gray-50 hover:text-primary hover:border-primary/30"}
+                    >
+                        Images
+                        <ImageIcon className={`ml-2 h-5 w-5 ${showImages ? 'text-primary' : 'text-gray-500 group-hover:text-primary'}`} />
+                    </Button>
+                )}
                 {/* Pagination Controls */}
                 {checkCount > 1 && (
                     <div className="flex items-center bg-white border rounded-lg p-0.5 shadow-sm h-10">

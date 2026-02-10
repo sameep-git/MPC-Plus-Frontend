@@ -135,7 +135,8 @@ export const mapBeamsToResults = (
                 status: overallStatus,
                 metrics,
                 approvedBy: beam.approvedBy,
-                approvedDate: beam.approvedDate
+                approvedDate: beam.approvedDate,
+                imagePaths: beam.imagePaths
             });
         }
     });

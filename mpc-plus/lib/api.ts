@@ -38,6 +38,38 @@ const toCamelCase = (obj: any): any => {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 
+/**
+ * Image storage configuration.
+ *
+ * NEXT_PUBLIC_STORAGE_URL — Optional. If set, images are fetched directly from
+ *   storage (e.g. MinIO or Supabase Storage public URL). The image path is
+ *   appended to this base URL.
+ *   Example (MinIO):    http://localhost:9000/beam-images
+ *   Example (Supabase): https://<project>.supabase.co/storage/v1/object/public/beam-images
+ *
+ * If NEXT_PUBLIC_STORAGE_URL is NOT set, images are fetched via the backend
+ * proxy at GET /api/image?path=<path>. The backend decides whether to route
+ * to MinIO or Supabase based on its own configuration.
+ */
+const STORAGE_URL = process.env.NEXT_PUBLIC_STORAGE_URL || '';
+
+/**
+ * Construct a URL to fetch a beam check image.
+ *
+ * When NEXT_PUBLIC_STORAGE_URL is set → builds a direct storage URL.
+ * Otherwise → proxies through the backend at /api/image?path=<path>.
+ */
+export const getImageUrl = (imagePath: string): string => {
+  if (STORAGE_URL) {
+    // Direct storage access (MinIO or Supabase public bucket)
+    const base = STORAGE_URL.replace(/\/$/, '');
+    return `${base}/${imagePath}`;
+  }
+  // Backend proxy (default — backend routes to MinIO or Supabase internally)
+  const base = API_BASE.replace(/\/$/, '');
+  return `${base}/image?path=${encodeURIComponent(imagePath)}`;
+};
+
 const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
   // Inject Supabase publishable apikey header if available (useful when calling
   // Supabase REST endpoints directly via NEXT_PUBLIC_SUPABASE_URL).

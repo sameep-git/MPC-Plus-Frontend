@@ -14,6 +14,7 @@ interface ResultListProps {
     selectedMetrics: Set<string>;
     toggleMetric: (metricName: string) => void;
     dataLoading: boolean;
+    onViewBeamImages?: (checkId: string) => void;
 }
 
 export const ResultList: React.FC<ResultListProps> = ({
@@ -23,7 +24,8 @@ export const ResultList: React.FC<ResultListProps> = ({
     toggleCheckExpand,
     selectedMetrics,
     toggleMetric,
-    dataLoading
+    dataLoading,
+    onViewBeamImages
 }) => {
 
     const renderBeamSection = () => (
@@ -49,6 +51,8 @@ export const ResultList: React.FC<ResultListProps> = ({
                                 status={check.status}
                                 isExpanded={expandedChecks.has(check.id)}
                                 onToggle={toggleCheckExpand}
+                                hasImages={!!(check.imagePaths && Object.keys(check.imagePaths).length > 0)}
+                                onViewImages={onViewBeamImages}
                             >
                                 <MetricTable
                                     metrics={check.metrics}
