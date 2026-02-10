@@ -100,8 +100,12 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
                 fullDate: isoDate,
             };
 
-            // Map Beams
-            const dayBeams = beams.filter(b => b.date && b.date.startsWith(isoDate));
+            // Map Beams - check both date and timestamp fields
+            const dayBeams = beams.filter(b => {
+                const dateMatch = b.date && b.date.startsWith(isoDate);
+                const tsMatch = b.timestamp && b.timestamp.startsWith(isoDate);
+                return dateMatch || tsMatch;
+            });
             dayBeams.forEach(b => {
                 if (b.type) {
                     const type = b.type;
@@ -121,8 +125,12 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
             });
 
             // Map Geo Checks (assuming one per day)
-            // Use startsWith to handle ISO timestamps in Date field
-            const dayGeo = geoChecks.find(g => g.date && g.date.startsWith(isoDate));
+            // Use timestamp first, fallback to date
+            const dayGeo = geoChecks.find(g => {
+                const dateMatch = g.date && g.date.startsWith(isoDate);
+                const tsMatch = g.timestamp && g.timestamp.startsWith(isoDate);
+                return dateMatch || tsMatch;
+            });
             if (dayGeo) {
                 // IsoCenter
                 if (dayGeo.isoCenterSize !== undefined) dataPoint[getMetricKey('Iso Center Size')] = dayGeo.isoCenterSize;
@@ -168,24 +176,42 @@ export const fetchGraphData = async (startDate: Date, endDate: Date, machineId: 
                 if (dayGeo.meanOffsetB !== undefined) dataPoint[getMetricKey('Mean Offset B')] = dayGeo.meanOffsetB;
                 if (dayGeo.maxOffsetB !== undefined) dataPoint[getMetricKey('Max Offset B')] = dayGeo.maxOffsetB;
 
-                // Leaves (Optional - duplicating logic from page component)
-                if (dayGeo.mlcLeavesA) {
-                    Object.entries(dayGeo.mlcLeavesA).forEach(([key, val]) => {
+                // Leaves - handle both Record<string, number> and [{leafNumber, value}] array format
+                const normalizeMlc = (data: any): Record<string, number> | null => {
+                    if (!data) return null;
+                    if (Array.isArray(data)) {
+                        const record: Record<string, number> = {};
+                        data.forEach((entry: { leafNumber?: number; leaf_number?: number; value?: number; leaf_value?: number; backlash_value?: number }) => {
+                            const key = String(entry.leafNumber ?? entry.leaf_number);
+                            const val = entry.value ?? entry.leaf_value ?? entry.backlash_value;
+                            if (val !== undefined) record[key] = val;
+                        });
+                        return Object.keys(record).length > 0 ? record : null;
+                    }
+                    return data;
+                };
+
+                const leavesA = normalizeMlc(dayGeo.mlcLeavesA);
+                if (leavesA) {
+                    Object.entries(leavesA).forEach(([key, val]) => {
                         dataPoint[getMetricKey(`MLC A Leaf ${key}`)] = val as number;
                     });
                 }
-                if (dayGeo.mlcLeavesB) {
-                    Object.entries(dayGeo.mlcLeavesB).forEach(([key, val]) => {
+                const leavesB = normalizeMlc(dayGeo.mlcLeavesB);
+                if (leavesB) {
+                    Object.entries(leavesB).forEach(([key, val]) => {
                         dataPoint[getMetricKey(`MLC B Leaf ${key}`)] = val as number;
                     });
                 }
-                if (dayGeo.mlcBacklashA) {
-                    Object.entries(dayGeo.mlcBacklashA).forEach(([key, val]) => {
+                const backlashA = normalizeMlc(dayGeo.mlcBacklashA);
+                if (backlashA) {
+                    Object.entries(backlashA).forEach(([key, val]) => {
                         dataPoint[getMetricKey(`Backlash A Leaf ${key}`)] = val as number;
                     });
                 }
-                if (dayGeo.mlcBacklashB) {
-                    Object.entries(dayGeo.mlcBacklashB).forEach(([key, val]) => {
+                const backlashB = normalizeMlc(dayGeo.mlcBacklashB);
+                if (backlashB) {
+                    Object.entries(backlashB).forEach(([key, val]) => {
                         dataPoint[getMetricKey(`Backlash B Leaf ${key}`)] = val as number;
                     });
                 }

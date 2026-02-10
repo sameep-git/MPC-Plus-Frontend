@@ -113,7 +113,7 @@ export const fetchResults = async (month: number, year: number, machineId: strin
         .select('*')
         .eq('month', month)
         .eq('year', year)
-        .eq('machineId', machineId);
+        .eq('machine_id', machineId);
       if (error) throw error;
       return data;
     }
@@ -175,21 +175,37 @@ export const fetchBeams = async (params: FetchBeamsParams): Promise<CheckGroup[]
       if (params.date) url.searchParams.set('date', params.date);
       if (params.startDate) url.searchParams.set('startDate', params.startDate);
       if (params.endDate) url.searchParams.set('endDate', params.endDate);
-      if (params.startDate) url.searchParams.set('startDate', params.startDate);
-      if (params.endDate) url.searchParams.set('endDate', params.endDate);
       const data = await safeFetch(url.toString());
       return toCamelCase(data);
     }
 
     if (supabase) {
-      let query = supabase.from('beams').select('*').eq('type', params.type).eq('machineId', params.machineId);
+      // Join beam_variants via typeID FK to get the variant name
+      let query = supabase
+        .from('beams')
+        .select('*, beam_variants(variant)')
+        .eq('machine_id', params.machineId);
+      if (params.type) {
+        // Filter by variant name through the FK join
+        query = query.eq('beam_variants.variant', params.type);
+      }
       if (params.date) query = query.eq('date', params.date);
       if (params.startDate) query = query.gte('date', params.startDate);
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
+
+      // Map beam_variants join data onto the beam's type field
+      const mapped = (data || []).map((beam: Record<string, unknown>) => {
+        const variants = beam.beam_variants as { variant: string } | null;
+        return {
+          ...beam,
+          type: variants?.variant ?? beam.type, // Prefer joined variant name
+        };
+      });
+
       // Note: Supabase direct fallback does not support grouping yet.
-      return data as unknown as CheckGroup[];
+      return toCamelCase(mapped) as unknown as CheckGroup[];
     }
 
     return [] as CheckGroup[];
@@ -219,7 +235,7 @@ export const approveBeams = async (beamIds: string[], approvedBy: string): Promi
         .from('beams')
         .update({
           approved_by: approvedBy,
-          approved_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+          approved_date: new Date().toISOString() // Full ISO timestamp
         })
         .in('id', beamIds)
         .select();
@@ -285,21 +301,20 @@ export const fetchGeoChecks = async (params: FetchGeoChecksParams): Promise<GeoC
       if (params.date) url.searchParams.set('date', params.date);
       if (params.startDate) url.searchParams.set('start-date', params.startDate);
       if (params.endDate) url.searchParams.set('end-date', params.endDate);
-      if (params.startDate) url.searchParams.set('start-date', params.startDate);
-      if (params.endDate) url.searchParams.set('end-date', params.endDate);
       const data = await safeFetch(url.toString());
       return toCamelCase(data);
     }
 
     if (supabase) {
-      let query = supabase.from('geochecks').select('*').eq('machine_id', params.machineId);
+      // Use geochecks_full view to get MLC leaf data from child tables
+      let query = supabase.from('geochecks_full').select('*').eq('machine_id', params.machineId);
       if (params.type) query = query.eq('type', params.type);
       if (params.date) query = query.eq('date', params.date);
       if (params.startDate) query = query.gte('date', params.startDate);
       if (params.endDate) query = query.lte('date', params.endDate);
       const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as GeoCheckType[];
+      return toCamelCase(data) as unknown as GeoCheckType[];
     }
 
     return [] as GeoCheckType[];
@@ -625,21 +640,22 @@ export const fetchBeamChecksForDate = async (
       const startOfDay = `${date}T00:00:00Z`;
       const endOfDay = `${date}T23:59:59Z`;
 
+      // Join beam_variants to get variant name, filter by variant instead of type text
       const { data, error } = await supabase
         .from('beams')
-        .select('id, timestamp, rel_output, type')
+        .select('id, timestamp, rel_output, type, beam_variants(variant)')
         .eq('machine_id', machineId)
-        .eq('type', beamType)
+        .eq('beam_variants.variant', beamType)
         .gte('timestamp', startOfDay)
         .lte('timestamp', endOfDay)
         .order('timestamp', { ascending: true });
 
       if (error) throw error;
-      return (data || []).map((b: { id: string; timestamp: string; rel_output: number | null; type: string | null }) => ({
+      return (data || []).map((b: { id: string; timestamp: string; rel_output: number | null; type: string | null; beam_variants: { variant: string } | null }) => ({
         id: b.id,
         timestamp: b.timestamp,
         relOutput: b.rel_output ?? 0,
-        type: b.type ?? beamType
+        type: b.beam_variants?.variant ?? b.type ?? beamType
       }));
     }
 

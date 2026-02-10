@@ -7,7 +7,7 @@ export default function ThemeInitializer() {
   useEffect(() => {
     // Initialize theme on mount
     const settings = getSettings();
-    applyTheme(settings.theme);
+    applyTheme();
   }, []);
 
   return null;
