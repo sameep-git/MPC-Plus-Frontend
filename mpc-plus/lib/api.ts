@@ -328,7 +328,8 @@ export interface Threshold {
   id?: string;
   machineId: string;
   checkType: 'geometry' | 'beam';
-  beamVariant?: string;
+  beamVariant?: string;           // legacy string name
+  beamVariantId?: string;         // UUID FK → beam_variants.id
   metricType: string;
   value: number;
   lastUpdated?: string;
@@ -342,9 +343,20 @@ export const fetchThresholds = async (): Promise<Threshold[]> => {
     }
 
     if (supabase) {
-      const { data, error } = await supabase.from('thresholds').select('*');
+      const { data, error } = await supabase
+        .from('thresholds')
+        .select('*, beam_variants(variant)');
       if (error) throw error;
-      return toCamelCase(data);
+      // Map the joined variant name onto beam_variant field for backward compat
+      const mapped = (data || []).map((d: Record<string, unknown>) => {
+        const bv = d.beam_variants as { variant: string } | null;
+        return {
+          ...d,
+          beam_variant: bv?.variant ?? d.beam_variant ?? null,
+          beam_variants: undefined,
+        };
+      });
+      return toCamelCase(mapped);
     }
 
     return [];
@@ -375,6 +387,7 @@ export const saveThreshold = async (threshold: Threshold): Promise<Threshold> =>
         machine_id: threshold.machineId,
         check_type: threshold.checkType,
         beam_variant: threshold.beamVariant,
+        beam_variant_id: threshold.beamVariantId ?? null,
         metric_type: threshold.metricType,
         value: threshold.value,
         last_updated: new Date().toISOString(),
@@ -410,14 +423,14 @@ export const generateReport = async (payload: ReportRequest): Promise<Blob> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/reports/generate`;
-      
+
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
-              ? { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY } 
-              : {})
+          ...(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+            ? { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }
+            : {})
         },
         body: JSON.stringify(payload)
       });
@@ -457,7 +470,7 @@ export interface DocFactor {
   beamId: string;
   msdAbs: number;
   mpcRel: number;
-  docFactorValue: number;
+  docFactor: number;            // DB column: doc_factor → toCamelCase → docFactor
   measurementDate: string; // YYYY-MM-DD
   startDate: string;       // YYYY-MM-DD
   endDate?: string | null; // YYYY-MM-DD or null
@@ -479,6 +492,35 @@ export interface BeamVariantWithId {
 }
 
 /**
+ * Normalizes a raw doc factor object to match the DocFactor interface.
+ * Handles field name differences between Supabase (doc_factor) and C# API (DocFactorValue).
+ * Also parses Supabase numeric strings to proper numbers.
+ */
+const normalizeDocFactor = (raw: Record<string, unknown>): DocFactor => {
+  // Resolve docFactor value - could be docFactor (Supabase) or docFactorValue (C# API)
+  const docFactorVal = raw.docFactor ?? raw.docFactorValue ?? raw.doc_factor ?? raw.DocFactorValue ?? raw.DocFactor;
+  const msdAbsVal = raw.msdAbs ?? raw.msd_abs ?? raw.MsdAbs;
+  const mpcRelVal = raw.mpcRel ?? raw.mpc_rel ?? raw.MpcRel;
+
+  return {
+    id: raw.id as string | undefined,
+    machineId: (raw.machineId ?? raw.machine_id) as string,
+    beamVariantId: (raw.beamVariantId ?? raw.beam_variant_id) as string,
+    beamVariantName: (raw.beamVariantName ?? raw.beam_variant_name) as string | undefined,
+    beamId: (raw.beamId ?? raw.beam_id) as string,
+    msdAbs: typeof msdAbsVal === 'string' ? parseFloat(msdAbsVal) : (msdAbsVal as number) ?? 0,
+    mpcRel: typeof mpcRelVal === 'string' ? parseFloat(mpcRelVal) : (mpcRelVal as number) ?? 0,
+    docFactor: typeof docFactorVal === 'string' ? parseFloat(docFactorVal) : (docFactorVal as number) ?? 0,
+    measurementDate: (raw.measurementDate ?? raw.measurement_date) as string,
+    startDate: (raw.startDate ?? raw.start_date) as string,
+    endDate: (raw.endDate ?? raw.end_date) as string | null | undefined,
+    createdAt: (raw.createdAt ?? raw.created_at) as string | undefined,
+    updatedAt: (raw.updatedAt ?? raw.updated_at) as string | undefined,
+    createdBy: (raw.createdBy ?? raw.created_by) as string | undefined,
+  };
+};
+
+/**
  * Fetch all DOC factors, optionally filtered by machine
  */
 export const fetchDocFactors = async (machineId?: string): Promise<DocFactor[]> => {
@@ -487,17 +529,47 @@ export const fetchDocFactors = async (machineId?: string): Promise<DocFactor[]> 
       const url = machineId
         ? `${API_BASE.replace(/\/$/, '')}/docfactors?machineId=${encodeURIComponent(machineId)}`
         : `${API_BASE.replace(/\/$/, '')}/docfactors`;
-      return await safeFetch(url);
+      const raw = await safeFetch(url);
+      const arr = Array.isArray(raw) ? raw : [raw];
+      const factors = arr.map((d: Record<string, unknown>) => normalizeDocFactor(toCamelCase(d)));
+
+      // C# API doesn't return variant names — resolve from beam_variants
+      const missingNames = factors.some(f => !f.beamVariantName && f.beamVariantId);
+      if (missingNames) {
+        try {
+          const variants = await fetchBeamVariantsWithIds();
+          for (const f of factors) {
+            if (!f.beamVariantName && f.beamVariantId) {
+              const match = variants.find(v => v.id === f.beamVariantId);
+              if (match) f.beamVariantName = match.variant;
+            }
+          }
+        } catch (e) {
+          console.warn('[fetchDocFactors] Could not resolve variant names:', e);
+        }
+      }
+
+      return factors;
     }
 
     if (supabase) {
-      let query = supabase.from('doc').select('*');
+      // Join beam_variants to get variant name for DOC factor matching
+      let query = supabase.from('doc').select('*, beam_variants(variant)');
       if (machineId) {
         query = query.eq('machine_id', machineId);
       }
       const { data, error } = await query.order('start_date', { ascending: false });
       if (error) throw error;
-      return toCamelCase(data) as DocFactor[];
+      // Map the joined variant name onto beamVariantName
+      const mapped = (data || []).map((d: Record<string, unknown>) => {
+        const bv = d.beam_variants as { variant: string } | null;
+        return {
+          ...d,
+          beam_variant_name: bv?.variant ?? null,
+          beam_variants: undefined, // Remove nested join object
+        };
+      });
+      return mapped.map((d: Record<string, unknown>) => normalizeDocFactor(toCamelCase(d)));
     }
 
     return [];
@@ -563,7 +635,7 @@ export const fetchApplicableDocFactor = async (
 /**
  * Create a new DOC factor
  */
-export const createDocFactor = async (docFactor: Omit<DocFactor, 'id' | 'docFactorValue' | 'createdAt' | 'updatedAt'>): Promise<DocFactor> => {
+export const createDocFactor = async (docFactor: Omit<DocFactor, 'id' | 'docFactor' | 'createdAt' | 'updatedAt'>): Promise<DocFactor> => {
   try {
     if (API_BASE) {
       const url = `${API_BASE.replace(/\/$/, '')}/docfactors`;

@@ -57,14 +57,18 @@ export const getMetricKey = (metricName: string): string => {
 };
 
 /**
- * Finds the applicable DOC factor for a beam type based on beam_variant_id mapping.
- * DOC factors map beam_variant_id to beam types (e.g., "6x", "10x").
+ * Finds the applicable DOC factor for a beam type.
+ * Matches by UUID (typeID → beamVariantId) first, then falls back to string name.
  */
-const findDocFactorForBeamType = (beamType: string, docFactors: DocFactor[]): DocFactor | undefined => {
-    // DOC factors use beamVariantName which matches the beam type
+const findDocFactorForBeamType = (beamType: string, docFactors: DocFactor[], typeID?: string): DocFactor | undefined => {
+    // 1. Prefer UUID match: beam.typeID === docFactor.beamVariantId
+    if (typeID) {
+        const uuidMatch = docFactors.find(df => df.beamVariantId === typeID);
+        if (uuidMatch) return uuidMatch;
+    }
+    // 2. Fallback: string name match
     return docFactors.find(df =>
-        df.beamVariantName?.toLowerCase() === beamType.toLowerCase() ||
-        df.beamVariantId?.toLowerCase() === beamType.toLowerCase()
+        df.beamVariantName?.toLowerCase() === beamType.toLowerCase()
     );
 };
 
@@ -86,22 +90,19 @@ export const mapBeamsToResults = (
         const type = beam.type;
         const metrics: CheckMetric[] = [];
 
-        // Find applicable DOC factor for this beam type
-        const docFactor = findDocFactorForBeamType(type, docFactors);
+        // Find applicable DOC factor for this beam type (prefer UUID match)
+        const docFactor = findDocFactorForBeamType(type, docFactors, beam.typeID);
 
         if (beam.relOutput !== undefined && beam.relOutput !== null) {
             const name = createBeamSpecificMetricName('Relative Output', type);
-            // Use backend status if available, else default to 'pass' (or 'PASS' to match backend casing usually)
-            // Backend returns "PASS"/"FAIL" usually uppercase based on my C# code?
-            // C# code: "PASS", "FAIL".
             const status = (beam.relOutputStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Output');
-            const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : ''; // Assuming % for output
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Relative Output');
+            const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : '';
 
             // Calculate absolute output using DOC factor if available
             let absoluteValue: string | number = '';
-            if (docFactor && docFactor.docFactorValue) {
-                const absOutput = beam.relOutput * docFactor.docFactorValue;
+            if (docFactor && docFactor.docFactor) {
+                const absOutput = beam.relOutput * docFactor.docFactor;
                 absoluteValue = absOutput.toFixed(4);
             }
 
@@ -110,14 +111,14 @@ export const mapBeamsToResults = (
         if (beam.relUniformity !== undefined && beam.relUniformity !== null) {
             const name = createBeamSpecificMetricName('Relative Uniformity', type);
             const status = (beam.relUniformityStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Relative Uniformity');
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Relative Uniformity');
             const thresholdVal = threshold ? `± ${threshold.value.toFixed(2)}%` : '';
             metrics.push({ name, value: beam.relUniformity, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }
         if (beam.centerShift !== undefined && beam.centerShift !== null) {
             const name = createBeamSpecificMetricName('Center Shift', type);
             const status = (beam.centerShiftStatus || 'pass').toLowerCase();
-            const threshold = thresholds.find(t => t.checkType === 'beam' && t.beamVariant === type && t.metricType === 'Center Shift');
+            const threshold = thresholds.find(t => t.checkType === 'beam' && (t.beamVariantId === beam.typeID || t.beamVariant === type) && t.metricType === 'Center Shift');
             const thresholdVal = threshold ? `≤ ${threshold.value.toFixed(3)}` : '';
             metrics.push({ name, value: beam.centerShift, thresholds: thresholdVal, absoluteValue: '', status: status as 'pass' | 'fail' | 'warning' });
         }

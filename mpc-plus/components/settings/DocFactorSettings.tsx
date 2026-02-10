@@ -326,13 +326,13 @@ export default function DocFactorSettings() {
                                         {doc.beamVariantName || getBeamVariantName(doc.beamVariantId)}
                                     </td>
                                     <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                        {doc.msdAbs.toFixed(4)}
+                                        {doc.msdAbs?.toFixed(4) ?? '-'}
                                     </td>
                                     <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
-                                        {doc.mpcRel.toFixed(4)}
+                                        {doc.mpcRel?.toFixed(4) ?? '-'}
                                     </td>
                                     <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300 font-medium">
-                                        {doc.docFactorValue.toFixed(4)}
+                                        {doc.docFactor?.toFixed(4) ?? '-'}
                                     </td>
                                     <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
                                         {formatDate(doc.startDate)}
