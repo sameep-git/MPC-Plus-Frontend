@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchUser, handleApiError, fetchThresholds, saveThreshold, fetchMachines, fetchBeamVariantsWithIds, type Threshold, type BeamVariantWithId } from '../../lib/api';
 import DocFactorSettings from '../../components/settings/DocFactorSettings';
+import MachineSettings from '../../components/settings/MachineSettings';
 import type { Machine } from '../../models/Machine';
 import {
   Navbar,
@@ -104,6 +105,7 @@ const MANUAL_BASELINE_FIELDS: Array<{ key: keyof BaselineManualValues; label: st
 
 const SETTINGS_SECTIONS = [
   { id: 'theme-settings', label: 'Theme & Accent' },
+  { id: 'machine-settings', label: 'Machine Management' },
   { id: 'beam-threshold-settings', label: 'Threshold Configuration' },
   { id: 'graph-threshold-settings', label: 'Graph Threshold' },
   { id: 'baseline-settings', label: 'Baseline' },
@@ -523,9 +525,6 @@ export default function SettingsPage() {
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Theme</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            The application is locked to Light mode for consistency.
-          </p>
           <div className="max-w-md">
             <Label className="mb-2 block">Accent Color</Label>
             <Select
@@ -550,6 +549,14 @@ export default function SettingsPage() {
               </SelectContent>
             </Select>
           </div>
+        </section>
+
+        {/* Machine Settings */}
+        <section
+          id="machine-settings"
+          className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
+        >
+          <MachineSettings />
         </section>
 
         {/* Threshold Configuration */}

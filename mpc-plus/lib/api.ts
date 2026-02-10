@@ -66,13 +66,48 @@ export const fetchMachines = async (): Promise<MachineType[]> => {
     if (supabase) {
       const { data, error } = await supabase.from('machines').select('*');
       if (error) throw error;
-      return data as MachineType[];
+      return toCamelCase(data) as MachineType[];
     }
 
     // Last fallback: return empty array but signal with console (keeps UI from crashing)
     console.warn('No API_BASE or Supabase configured — fetchMachines returning empty array');
     return [];
   } catch (err) {
+    console.error('[fetchMachines] Error:', err);
+    throw err;
+  }
+};
+
+export const updateMachine = async (machine: MachineType): Promise<void> => {
+  try {
+    if (API_BASE) {
+      const url = `${API_BASE.replace(/\/$/, '')}/machines/${machine.id}`;
+      await safeFetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(machine),
+      });
+      return;
+    }
+
+    if (supabase) {
+      // Map camelCase model back to snake_case for DB
+      const payload = {
+        name: machine.name,
+        location: machine.location,
+        type: machine.type,
+      };
+
+      const { error } = await supabase
+        .from('machines')
+        .update(payload)
+        .eq('id', machine.id);
+
+      if (error) throw error;
+      return;
+    }
+  } catch (err) {
+    console.error('[updateMachine] Error:', err);
     throw err;
   }
 };
