@@ -167,11 +167,19 @@ export default function MPCResultPage() {
         selectedChecks: Array.from(reportSelectedChecks)
       });
 
+      // Determine file extension based on response content type
+      const isZip = blob.type === 'application/zip' || blob.type === 'application/x-zip-compressed';
+      const ext = isZip ? 'zip' : 'pdf';
+      const machineSafe = selectedMachine.name.replace(/\s+/g, '_');
+      const fileName = isZip
+        ? `MPC_Reports_${machineSafe}_${start}_to_${end}.${ext}`
+        : `MPC_Report_${machineSafe}_${start}_to_${end}.${ext}`;
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `MPC_Report_${selectedMachine.name.replace(/\s+/g, '_')}_${start}_to_${end}.pdf`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
