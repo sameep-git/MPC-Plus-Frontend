@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, generateReport, type DocFactor } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, generateReport, getImageUrl, type DocFactor } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -26,6 +26,7 @@ import { DateRangePicker } from '../../components/ui/date-range-picker';
 import { ReportGenerationModal } from '../../components/results/ReportGenerationModal'; // Import Shared Modal
 import { MetricTable } from '../../components/results/MetricTable';
 import { GraphSection } from '../../components/results/GraphSection';
+import { ImageViewer, type BeamImage } from '../../components/results/ImageViewer';
 import { ResultHeader } from '../../components/results/ResultHeader';
 import { ResultList } from '../../components/results/ResultList';
 import type { CheckGroup as CheckGroupModel } from '../../models/CheckGroup';
@@ -53,6 +54,8 @@ function ResultDetailPageContent() {
 
   // Graph State
   const [showGraph, setShowGraph] = useState<boolean>(false);
+  const [showImages, setShowImages] = useState<boolean>(false);
+  const [activeBeamFilter, setActiveBeamFilter] = useState<string | null>(null);
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
   const [graphDateRange, setGraphDateRange] = useState<{ start: Date; end: Date }>(() => {
     // Initial range: 14 days ending on selected date
@@ -111,6 +114,52 @@ function ResultDetailPageContent() {
       .filter(g => g.timestamp.startsWith(isoDate))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [allBeams, selectedDate]);
+
+  // Collect images from the current check group's beams
+  const currentImages: BeamImage[] = useMemo(() => {
+    if (dailyGroups.length === 0) return [];
+    const group = dailyGroups[activeCheckIndex];
+    if (!group) return [];
+
+    const images: BeamImage[] = [];
+    for (const beam of group.beams) {
+      if (beam.imagePaths && typeof beam.imagePaths === 'object') {
+        for (const [label, path] of Object.entries(beam.imagePaths)) {
+          images.push({
+            label,
+            url: getImageUrl(path),
+            beamType: beam.type,
+          });
+        }
+      }
+    }
+    return images;
+  }, [dailyGroups, activeCheckIndex]);
+
+  const hasImages = currentImages.length > 0;
+
+  // Filter images for the active beam (when clicked from per-row icon)
+  const displayedImages = useMemo(() => {
+    if (!activeBeamFilter) return currentImages;
+    // activeBeamFilter is the CheckResult id like "beam-<uuid>" or "beam-<type>-<index>"
+    // Find the matching beam in the current group to get its type
+    const group = dailyGroups[activeCheckIndex];
+    if (!group) return currentImages;
+
+    // Extract the beam identifier: strip "beam-" prefix
+    const beamIdPart = activeBeamFilter.replace(/^beam-/, '');
+    const matchingBeam = group.beams.find(b => b.id === beamIdPart || `${b.type}` === beamIdPart);
+    if (!matchingBeam) return currentImages;
+
+    return currentImages.filter(img => img.beamType === matchingBeam.type);
+  }, [currentImages, activeBeamFilter, dailyGroups, activeCheckIndex]);
+
+  // Handler for per-beam image button clicks
+  const handleViewBeamImages = (checkId: string) => {
+    setActiveBeamFilter(checkId);
+    setShowImages(true);
+    setShowGraph(false);
+  };
 
   // Map results for the CURRENT active check group
   const beamResults = useMemo(() => {
@@ -395,8 +444,26 @@ function ResultDetailPageContent() {
           selectedDate={selectedDate}
           onGenerateReport={handleGenerateReport}
           onApprove={openApprovalModal}
-          onToggleGraph={() => setShowGraph(prev => !prev)}
+          onToggleGraph={() => {
+            setShowGraph(prev => {
+              const next = !prev;
+              if (next) setShowImages(false);
+              return next;
+            });
+          }}
           showGraph={showGraph}
+          onToggleImages={() => {
+            setShowImages(prev => {
+              const next = !prev;
+              if (next) {
+                setShowGraph(false);
+                setActiveBeamFilter(null); // Show all images when toggled from header
+              }
+              return next;
+            });
+          }}
+          showImages={showImages}
+          hasImages={true}
           availableReportChecks={availableReportChecks}
           beamResults={beamResults}
           // Pagination
@@ -413,7 +480,7 @@ function ResultDetailPageContent() {
           </div>
         )}
 
-        <div className={`grid gap-8 mt-8 ${showGraph ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
+        <div className={`grid gap-8 mt-8 ${(showGraph || showImages) ? 'grid-cols-1 lg:grid-cols-[30%_70%]' : 'grid-cols-1'}`}>
           <ResultList
             beamResults={beamResults}
             geoResults={geoResults}
@@ -422,6 +489,7 @@ function ResultDetailPageContent() {
             selectedMetrics={selectedMetrics}
             toggleMetric={toggleMetric}
             dataLoading={dataLoading}
+            onViewBeamImages={handleViewBeamImages}
           />
 
           {/* Graph Column */}
@@ -457,6 +525,19 @@ function ResultDetailPageContent() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Images Column */}
+          {showImages && (
+            <div className="space-y-6">
+              <ImageViewer
+                images={displayedImages}
+                onClose={() => {
+                  setShowImages(false);
+                  setActiveBeamFilter(null);
+                }}
+              />
             </div>
           )}
         </div>

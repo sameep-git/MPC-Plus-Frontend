@@ -14,4 +14,5 @@ export interface CheckResult {
     metrics: CheckMetric[];
     approvedBy?: string;
     approvedDate?: string;
+    imagePaths?: Record<string, string>;
 }

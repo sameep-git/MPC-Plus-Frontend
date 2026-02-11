@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../components/ui';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
 
 interface CheckGroupProps {
     id: string;
@@ -10,6 +10,8 @@ interface CheckGroupProps {
     children: React.ReactNode;
     status?: string; // Optional status (e.g., 'PASS'/'FAIL') to display in header
     className?: string; // For custom styling (e.g. background color for top-level)
+    hasImages?: boolean; // Show image icon if beam has associated images
+    onViewImages?: (id: string) => void; // Callback when image icon is clicked
 }
 
 export const CheckGroup: React.FC<CheckGroupProps> = ({
@@ -20,6 +22,8 @@ export const CheckGroup: React.FC<CheckGroupProps> = ({
     children,
     status,
     className = "border border-gray-100 rounded-lg",
+    hasImages,
+    onViewImages,
 }) => {
     return (
         <Collapsible
@@ -42,7 +46,29 @@ export const CheckGroup: React.FC<CheckGroupProps> = ({
                             </span>
                         )}
                     </div>
-                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <div className="flex items-center gap-1">
+                        {hasImages && onViewImages && (
+                            <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`View images for ${title}`}
+                                className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-primary/10 transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onViewImages(id);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation();
+                                        onViewImages(id);
+                                    }
+                                }}
+                            >
+                                <ImageIcon className="w-4 h-4 text-primary" />
+                            </span>
+                        )}
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
