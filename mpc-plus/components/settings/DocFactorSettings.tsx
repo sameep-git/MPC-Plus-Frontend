@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -21,6 +21,16 @@ import {
 } from '../../lib/api';
 import type { Machine } from '../../models/Machine';
 
+// MSD Abs boundary constants
+const MSD_ABS_MIN = 0.97;
+const MSD_ABS_MAX = 1.03;
+
+interface BeamEntry {
+    beamCheck: BeamCheckOption | null;
+    msdAbs: string;
+    loading: boolean;
+}
+
 export default function DocFactorSettings() {
     // Machine state
     const [machines, setMachines] = useState<Machine[]>([]);
@@ -30,28 +40,20 @@ export default function DocFactorSettings() {
     // Data states
     const [docFactors, setDocFactors] = useState<DocFactor[]>([]);
     const [beamVariants, setBeamVariants] = useState<BeamVariantWithId[]>([]);
-    const [beamChecks, setBeamChecks] = useState<BeamCheckOption[]>([]);
 
     // UI states
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [loadingBeamChecks, setLoadingBeamChecks] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // Form states
-    const [selectedBeamVariantId, setSelectedBeamVariantId] = useState<string>('');
+    // Modal form states
     const [measurementDate, setMeasurementDate] = useState<Date | undefined>(undefined);
-    const [selectedBeamCheckId, setSelectedBeamCheckId] = useState<string>('');
-    const [msdAbs, setMsdAbs] = useState<string>('');
     const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+    const [beamEntries, setBeamEntries] = useState<Record<string, BeamEntry>>({});
+    const [loadingAllBeams, setLoadingAllBeams] = useState(false);
 
-    // Computed values
-    const selectedBeamCheck = beamChecks.find(b => b.id === selectedBeamCheckId);
-    const calculatedDocFactor = selectedBeamCheck && msdAbs
-        ? parseFloat(msdAbs) / selectedBeamCheck.relOutput
-        : null;
     const selectedMachineName = machines.find(m => m.id === selectedMachineId)?.name;
 
     // Load machines on mount
@@ -107,62 +109,148 @@ export default function DocFactorSettings() {
         loadDocFactors();
     }, [loadDocFactors]);
 
-    // Load beam checks when measurement date or beam variant changes
+    // Fetch beam checks for ALL variants when measurement date changes
     useEffect(() => {
-        const loadBeamChecks = async () => {
-            if (!measurementDate || !selectedBeamVariantId || !selectedMachineId) {
-                setBeamChecks([]);
+        const loadAllBeamChecks = async () => {
+            if (!measurementDate || !selectedMachineId || beamVariants.length === 0) {
+                setBeamEntries({});
                 return;
             }
 
-            const variant = beamVariants.find(v => v.id === selectedBeamVariantId);
-            if (!variant) {
-                console.log('Variant not found for ID:', selectedBeamVariantId);
-                return;
+            setLoadingAllBeams(true);
+
+            // Format date as YYYY-MM-DD
+            const year = measurementDate.getFullYear();
+            const month = String(measurementDate.getMonth() + 1).padStart(2, '0');
+            const day = String(measurementDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+
+            const entries: Record<string, BeamEntry> = {};
+
+            // Initialize all variants
+            for (const v of beamVariants) {
+                entries[v.id] = { beamCheck: null, msdAbs: '', loading: true };
+            }
+            setBeamEntries({ ...entries });
+
+            // Fetch beam checks for each variant in parallel
+            const results = await Promise.allSettled(
+                beamVariants.map(async (v) => {
+                    const checks = await fetchBeamChecksForDate(selectedMachineId, v.variant, dateStr);
+                    return { variantId: v.id, checks };
+                })
+            );
+
+            for (const result of results) {
+                if (result.status === 'fulfilled') {
+                    const { variantId, checks } = result.value;
+                    entries[variantId] = {
+                        beamCheck: checks.length > 0 ? checks[0] : null,
+                        msdAbs: '',
+                        loading: false,
+                    };
+                } else {
+                    // Find the variant ID from the failed promise (fallback: leave loading false)
+                    console.error('Failed to fetch beam checks for a variant:', result.reason);
+                }
             }
 
-            try {
-                setLoadingBeamChecks(true);
-                setError(null);
-
-                // Format date as YYYY-MM-DD, accounting for timezone
-                const year = measurementDate.getFullYear();
-                const month = String(measurementDate.getMonth() + 1).padStart(2, '0');
-                const day = String(measurementDate.getDate()).padStart(2, '0');
-                const dateStr = `${year}-${month}-${day}`;
-
-                console.log('Fetching beam checks:', { machineId: selectedMachineId, beamType: variant.variant, date: dateStr });
-
-                const checks = await fetchBeamChecksForDate(selectedMachineId, variant.variant, dateStr);
-                console.log('Received beam checks:', checks);
-                setBeamChecks(checks);
-                setSelectedBeamCheckId(''); // Reset selection
-            } catch (err) {
-                console.error('Failed to load beam checks:', err);
-                setError(err instanceof Error ? err.message : 'Failed to load beam checks');
-                setBeamChecks([]);
-            } finally {
-                setLoadingBeamChecks(false);
+            // Mark any still-loading as done (in case of errors)
+            for (const v of beamVariants) {
+                if (entries[v.id].loading) {
+                    entries[v.id] = { ...entries[v.id], loading: false };
+                }
             }
+
+            setBeamEntries({ ...entries });
+            setLoadingAllBeams(false);
         };
-        loadBeamChecks();
-    }, [measurementDate, selectedBeamVariantId, selectedMachineId, beamVariants]);
 
-    // Reset form
+        loadAllBeamChecks();
+    }, [measurementDate, selectedMachineId, beamVariants]);
+
+    // Helper: format date string
+    const formatDateStr = (d: Date): string => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    // Compute DOC factor for a beam entry
+    const computeDocFactor = (entry: BeamEntry): number | null => {
+        if (!entry.beamCheck || !entry.msdAbs) return null;
+        const msd = parseFloat(entry.msdAbs);
+        if (isNaN(msd)) return null;
+        const rel = entry.beamCheck.relOutput;
+        if (!rel || rel === 0 || isNaN(rel)) return null;
+        const doc = msd / rel;
+        if (!isFinite(doc) || isNaN(doc)) return null;
+        return doc;
+    };
+
+    // Check if MSD Abs value is within valid range (0.97 – 1.03)
+    const isMsdAbsInRange = (value: string): boolean => {
+        if (!value) return true; // Empty field, no error
+        const num = parseFloat(value);
+        if (isNaN(num)) return true;
+        return num >= MSD_ABS_MIN && num <= MSD_ABS_MAX;
+    };
+
+    // Update MSD Abs for a specific variant
+    const updateMsdAbs = (variantId: string, value: string) => {
+        setBeamEntries(prev => ({
+            ...prev,
+            [variantId]: { ...prev[variantId], msdAbs: value },
+        }));
+    };
+
+    // Get rows that are ready to save (non-empty, valid DOC)
+    const getSavableRows = () => {
+        return beamVariants
+            .filter(v => {
+                const entry = beamEntries[v.id];
+                if (!entry || !entry.beamCheck || !entry.msdAbs) return false;
+                if (!isMsdAbsInRange(entry.msdAbs)) return false;
+                const doc = computeDocFactor(entry);
+                return doc !== null;
+            })
+            .map(v => ({
+                variant: v,
+                entry: beamEntries[v.id],
+            }));
+    };
+
+    // Check if any row has an out-of-range DOC value
+    const hasOutOfRangeValues = () => {
+        return beamVariants.some(v => {
+            const entry = beamEntries[v.id];
+            if (!entry || !entry.msdAbs) return false;
+            return !isMsdAbsInRange(entry.msdAbs);
+        });
+    };
+
+    // Reset modal form
     const resetForm = () => {
-        setSelectedBeamVariantId('');
         setMeasurementDate(undefined);
-        setSelectedBeamCheckId('');
-        setMsdAbs('');
         setStartDate(undefined);
-        setBeamChecks([]);
+        setBeamEntries({});
         setError(null);
     };
 
-    // Handle create DOC factor
+    // Handle batch save
     const handleCreate = async () => {
-        if (!selectedBeamCheckId || !msdAbs || !startDate || !selectedBeamVariantId || !selectedMachineId) {
-            setError('Please fill in all required fields');
+        const savableRows = getSavableRows();
+        if (savableRows.length === 0) {
+            setError('No valid entries to save. Fill in MSD Abs values for at least one beam.');
+            return;
+        }
+        if (!startDate) {
+            setError('Please select a start date.');
+            return;
+        }
+        if (!measurementDate) {
+            setError('Please select a measurement date.');
             return;
         }
 
@@ -170,36 +258,30 @@ export default function DocFactorSettings() {
             setSaving(true);
             setError(null);
 
-            // Format dates properly
-            const startYear = startDate.getFullYear();
-            const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
-            const startDay = String(startDate.getDate()).padStart(2, '0');
-            const dateStr = `${startYear}-${startMonth}-${startDay}`;
+            const startDateStr = formatDateStr(startDate);
+            const measurementDateStr = formatDateStr(measurementDate);
 
-            const measurementYear = measurementDate?.getFullYear() || startYear;
-            const measurementMonth = String((measurementDate?.getMonth() || 0) + 1).padStart(2, '0');
-            const measurementDay = String(measurementDate?.getDate() || startDay).padStart(2, '0');
-            const measurementDateStr = `${measurementYear}-${measurementMonth}-${measurementDay}`;
+            // Create DOC factors for each valid row sequentially
+            for (const { variant, entry } of savableRows) {
+                await createDocFactor({
+                    machineId: selectedMachineId,
+                    beamVariantId: variant.id,
+                    beamId: entry.beamCheck!.id,
+                    msdAbs: parseFloat(entry.msdAbs),
+                    mpcRel: entry.beamCheck!.relOutput,
+                    measurementDate: measurementDateStr,
+                    startDate: startDateStr,
+                });
+            }
 
-            await createDocFactor({
-                machineId: selectedMachineId,
-                beamVariantId: selectedBeamVariantId,
-                beamId: selectedBeamCheckId,
-                msdAbs: parseFloat(msdAbs),
-                mpcRel: selectedBeamCheck!.relOutput,
-                measurementDate: measurementDateStr,
-                startDate: dateStr,
-            });
-
-            setSuccess('DOC factor created successfully');
+            setSuccess(`${savableRows.length} DOC factor(s) created successfully`);
             setIsModalOpen(false);
             resetForm();
             await loadDocFactors();
 
-            // Clear success message after 3 seconds
             setTimeout(() => setSuccess(null), 3000);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create DOC factor');
+            setError(err instanceof Error ? err.message : 'Failed to create DOC factors');
         } finally {
             setSaving(false);
         }
@@ -241,6 +323,9 @@ export default function DocFactorSettings() {
             </section>
         );
     }
+
+    const savableCount = getSavableRows().length;
+    const filledCount = beamVariants.filter(v => beamEntries[v.id]?.msdAbs).length;
 
     return (
         <section
@@ -286,12 +371,13 @@ export default function DocFactorSettings() {
             {/* Error/Success Messages */}
             {error && (
                 <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
                     <span className="text-red-700 dark:text-red-400">{error}</span>
                 </div>
             )}
             {success && (
-                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
                     <span className="text-green-700 dark:text-green-400">{success}</span>
                 </div>
             )}
@@ -357,108 +443,131 @@ export default function DocFactorSettings() {
                 </div>
             )}
 
-            {/* Add DOC Factor Modal */}
+            {/* Add DOC Factor Modal — All Beams at Once */}
             <Dialog open={isModalOpen} onOpenChange={(open) => { setIsModalOpen(open); if (!open) resetForm(); }}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Add DOC Factor for {selectedMachineName}</DialogTitle>
+                        <DialogTitle>Add DOC Factors for {selectedMachineName}</DialogTitle>
                     </DialogHeader>
 
-                    <div className="space-y-4 py-4">
-                        {/* Step 1: Beam Type */}
+                    <div className="space-y-5 py-4">
+                        {/* Step 1: Measurement Date */}
                         <div>
-                            <Label>Beam Type</Label>
-                            <Select value={selectedBeamVariantId} onValueChange={setSelectedBeamVariantId}>
-                                <SelectTrigger className="mt-1">
-                                    <SelectValue placeholder="Select beam type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {beamVariants.map((v) => (
-                                        <SelectItem key={v.id} value={v.id}>{v.variant}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Label>Measurement Date</Label>
+                            <div className="mt-1">
+                                <DatePicker
+                                    date={measurementDate}
+                                    setDate={setMeasurementDate}
+                                    className="w-full"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Select the date when the MSD measurements were taken
+                            </p>
                         </div>
 
-                        {/* Step 2: Measurement Date */}
-                        {selectedBeamVariantId && (
+                        {/* Step 2: All Beam Variants Table */}
+                        {measurementDate && (
                             <div>
-                                <Label>Measurement Date</Label>
-                                <div className="mt-1">
-                                    <DatePicker
-                                        date={measurementDate}
-                                        setDate={setMeasurementDate}
-                                        className="w-full"
-                                    />
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Select the date when the MSD measurement was taken
+                                <Label className="mb-2 block">Beam Measurements</Label>
+                                {loadingAllBeams ? (
+                                    <div className="flex items-center gap-2 py-6 justify-center text-gray-500">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading beam checks for all variants...
+                                    </div>
+                                ) : (
+                                    <div className="border rounded-lg overflow-hidden">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
+                                                    <th className="text-left py-2.5 px-3 font-medium text-gray-600 dark:text-gray-300">Beam Type</th>
+                                                    <th className="text-left py-2.5 px-3 font-medium text-gray-600 dark:text-gray-300">MPC Rel Output</th>
+                                                    <th className="text-left py-2.5 px-3 font-medium text-gray-600 dark:text-gray-300">MSD Abs</th>
+                                                    <th className="text-left py-2.5 px-3 font-medium text-gray-600 dark:text-gray-300">DOC Factor</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {beamVariants.map((v) => {
+                                                    const entry = beamEntries[v.id];
+                                                    const hasCheck = entry?.beamCheck !== null && entry?.beamCheck !== undefined;
+                                                    const doc = entry ? computeDocFactor(entry) : null;
+                                                    const msdOutOfRange = entry?.msdAbs ? !isMsdAbsInRange(entry.msdAbs) : false;
+                                                    const isLoading = entry?.loading;
+
+                                                    return (
+                                                        <tr
+                                                            key={v.id}
+                                                            className={`border-b border-gray-100 dark:border-gray-800 ${!hasCheck && !isLoading
+                                                                ? 'opacity-40'
+                                                                : ''
+                                                                }`}
+                                                        >
+                                                            <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white">
+                                                                {v.variant}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-gray-600 dark:text-gray-400 font-mono">
+                                                                {isLoading ? (
+                                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                                ) : hasCheck ? (
+                                                                    <span>{entry.beamCheck!.relOutput.toFixed(4)}</span>
+                                                                ) : (
+                                                                    <span className="text-gray-400 italic text-xs">No data</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-3">
+                                                                <Input
+                                                                    type="number"
+                                                                    step="0.0001"
+                                                                    min="0"
+                                                                    value={entry?.msdAbs ?? ''}
+                                                                    onChange={(e) => updateMsdAbs(v.id, e.target.value)}
+                                                                    placeholder={hasCheck ? '0.0000' : '—'}
+                                                                    disabled={!hasCheck || isLoading}
+                                                                    className={`h-8 w-28 text-sm ${msdOutOfRange
+                                                                        ? 'border-red-400 focus:border-red-500 focus:ring-red-500'
+                                                                        : ''
+                                                                        }`}
+                                                                />
+                                                                {msdOutOfRange && (
+                                                                    <span className="text-xs text-red-500 mt-0.5 block">{MSD_ABS_MIN}–{MSD_ABS_MAX}</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono">
+                                                                {doc !== null ? (
+                                                                    <span className="text-gray-900 dark:text-white">
+                                                                        {doc.toFixed(4)}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-gray-300 dark:text-gray-600">—</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                {/* Boundary warning */}
+                                {hasOutOfRangeValues() && (
+                                    <div className="mt-2 p-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                        <p className="text-xs text-red-700 dark:text-red-400">
+                                            MSD Abs values must be between <strong>{MSD_ABS_MIN}</strong> and <strong>{MSD_ABS_MAX}</strong>. Out-of-range entries will not be saved.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Info hint */}
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Fill in MSD Abs values for the beams you want. Leave others empty — only filled rows will be saved.
                                 </p>
                             </div>
                         )}
 
-                        {/* Step 3: Select Beam Check */}
-                        {measurementDate && selectedBeamVariantId && (
-                            <div>
-                                <Label>Select Beam Check</Label>
-                                {loadingBeamChecks ? (
-                                    <div className="flex items-center gap-2 mt-2 text-gray-500">
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Loading beam checks...
-                                    </div>
-                                ) : beamChecks.length === 0 ? (
-                                    <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
-                                        No beam checks found for this date/beam type combination on {selectedMachineName}.
-                                    </p>
-                                ) : (
-                                    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                                        {beamChecks.map((check) => (
-                                            <label
-                                                key={check.id}
-                                                className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${selectedBeamCheckId === check.id
-                                                    ? 'bg-primary/10 border border-primary'
-                                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <input
-                                                        type="radio"
-                                                        name="beamCheck"
-                                                        checked={selectedBeamCheckId === check.id}
-                                                        onChange={() => setSelectedBeamCheckId(check.id)}
-                                                        className="w-4 h-4"
-                                                    />
-                                                    <span className="text-sm">
-                                                        {new Date(check.timestamp).toLocaleTimeString()}
-                                                    </span>
-                                                </div>
-                                                <span className="text-sm font-mono text-gray-600 dark:text-gray-400">
-                                                    Rel: {check.relOutput.toFixed(4)}
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Step 4: Msd Abs Value */}
-                        {selectedBeamCheckId && (
-                            <div>
-                                <Label>Measured Absolute Output (Msd Abs)</Label>
-                                <Input
-                                    type="number"
-                                    step="0.0001"
-                                    value={msdAbs}
-                                    onChange={(e) => setMsdAbs(e.target.value)}
-                                    placeholder="Enter measured absolute value"
-                                    className="mt-1"
-                                />
-                            </div>
-                        )}
-
-                        {/* Step 5: Start Date */}
-                        {msdAbs && (
+                        {/* Step 3: Start Date */}
+                        {measurementDate && filledCount > 0 && (
                             <div>
                                 <Label>Valid From (Start Date)</Label>
                                 <div className="mt-1">
@@ -469,41 +578,36 @@ export default function DocFactorSettings() {
                                     />
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    DOC factor will apply to results from this date onwards
+                                    DOC factors will apply to results from this date onwards
                                 </p>
-                            </div>
-                        )}
-
-                        {/* Calculated DOC Factor Preview */}
-                        {calculatedDocFactor !== null && (
-                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                                <div className="text-sm text-blue-700 dark:text-blue-400">
-                                    <strong>Calculated DOC Factor:</strong> {calculatedDocFactor.toFixed(4)}
-                                </div>
-                                <div className="text-xs text-blue-600 dark:text-blue-500 mt-1">
-                                    Formula: {msdAbs} / {selectedBeamCheck?.relOutput.toFixed(4)} = {calculatedDocFactor.toFixed(4)}
-                                </div>
                             </div>
                         )}
                     </div>
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleCreate}
-                            disabled={!selectedBeamCheckId || !msdAbs || !startDate || saving}
-                        >
-                            {saving ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                'Create DOC Factor'
-                            )}
-                        </Button>
+                    <DialogFooter className="flex items-center justify-between sm:justify-between">
+                        <span className="text-xs text-gray-500">
+                            {savableCount > 0
+                                ? `${savableCount} beam(s) ready to save`
+                                : 'Fill in MSD Abs values to save'}
+                        </span>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleCreate}
+                                disabled={savableCount === 0 || !startDate || saving}
+                            >
+                                {saving ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    `Save ${savableCount > 0 ? `(${savableCount})` : ''}`
+                                )}
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

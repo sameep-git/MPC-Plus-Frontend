@@ -107,8 +107,8 @@ const SETTINGS_SECTIONS = [
   { id: 'theme-settings', label: 'Theme & Accent' },
   { id: 'machine-settings', label: 'Machine Management' },
   { id: 'beam-threshold-settings', label: 'Threshold Configuration' },
-  { id: 'graph-threshold-settings', label: 'Graph Threshold' },
-  { id: 'baseline-settings', label: 'Baseline' },
+  // { id: 'graph-threshold-settings', label: 'Graph Threshold' },
+  // { id: 'baseline-settings', label: 'Baseline' },
   { id: 'doc-settings', label: 'Dose Output Correction' },
 ] as const;
 
@@ -742,7 +742,7 @@ export default function SettingsPage() {
           </Card>
         </section>
 
-        {/* Graph Threshold Settings */}
+        {/* Graph Threshold Settings — temporarily hidden
         <section
           id="graph-threshold-settings"
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
@@ -805,8 +805,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+        */}
 
-        {/* Baseline Settings */}
+        {/* Baseline Settings — temporarily hidden
         <section
           id="baseline-settings"
           className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 scroll-mt-24"
@@ -871,6 +872,7 @@ export default function SettingsPage() {
             )}
           </div>
         </section>
+        */}
 
         {/* DOC Factor Settings */}
         <DocFactorSettings />
