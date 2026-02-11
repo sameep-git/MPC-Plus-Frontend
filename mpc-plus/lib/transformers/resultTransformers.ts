@@ -172,7 +172,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
                 value: def.value ?? '',
                 thresholds: thresholdVal,
                 // Or we could return threshold in metadata? For now leave empty as user only asked for Pass/Fail metric.
-                absoluteValue: def.value != null ? Math.abs(def.value).toFixed(3) : '',
+                absoluteValue: '',
                 status: backendStatus.toLowerCase() as 'pass' | 'fail' | 'warning'
             });
 

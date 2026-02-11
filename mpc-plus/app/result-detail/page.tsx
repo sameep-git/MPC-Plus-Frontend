@@ -354,11 +354,12 @@ function ResultDetailPageContent() {
         await approveBeams(beamsToApprove, user.name || user.id);
       }
 
-      // 2. Approve Geo Checks
-      // We approve the active GeoCheck if it exists
-      const selectedGeoCheck = dayGeoChecks[activeCheckIndex];
-      if (selectedGeoCheck && !selectedGeoCheck.approvedBy) {
-        await approveGeoChecks([selectedGeoCheck.id], user.name || user.id);
+      // 2. Approve ALL Geo Checks for the current day
+      const geoIdsToApprove = dayGeoChecks
+        .filter(gc => !gc.approvedBy)
+        .map(gc => gc.id);
+      if (geoIdsToApprove.length > 0) {
+        await approveGeoChecks(geoIdsToApprove, user.name || user.id);
       }
 
       setIsSignOffModalOpen(false);
@@ -608,7 +609,7 @@ function ResultDetailPageContent() {
                       metrics={currentItem.metrics}
                       selectedMetrics={new Set()}
                       onToggleMetric={() => { }} // No graphing in modal
-                      showAbsolute={true}
+                      showAbsolute={currentItem.id.startsWith('beam-')}
                     />
                   </div>
                 </div>
