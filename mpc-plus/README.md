@@ -1,34 +1,69 @@
+# MPC Plus - Frontend
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+The web interface for **MPC Plus**, a Machine Performance Check system designed for radiation therapy quality assurance. This project is an open-source initiative by **TCU Computer Science** students in collaboration with **The Center for Cancer and Blood Disorders**.
 
-## Getting Started
+## Overview
 
-First, run the development server:
+MPC Plus provides a modern, intuitive dashboard for medical physicists to monitor the performance of linear accelerators. It visualizes daily check results, highlights anomalies, and generates compliance reports.
+
+## 🚀 Key Features
+
+*   **Dashboard**: At-a-glance view of machine status and latest updates.
+*   **Visual Analytics**: Interactive graphs and charts (powered by **Recharts**) to track performance trends over time.
+*   **Machine Management**: Configure machine details and settings.
+*   **Detailed Results**: Drill down into specific beam metrics (Output, Uniformity, Symmetry).
+*   **Report Generation**: Request and download PDF compliance reports.
+
+## 🛠️ Technology Stack
+
+*   **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
+*   **Language**: TypeScript
+*   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+*   **UI Components**: [Radix UI](https://www.radix-ui.com/) / [Lucide React](https://lucide.dev/)
+*   **Charts**: [Recharts](https://recharts.org/)
+
+## � Database Schema
+
+For detailed database schema documentation, see the [Backend Schema](../../backend/MPC-Plus/DATABASE_SCHEMA.md).
+
+## �📦 Getting Started
+
+For full local deployment instructions, please refer to the [DEPLOYMENT.md](../../DEPLOYMENT.md) guide in the root directory.
+
+### Prerequisites
+
+*   Node.js 18+
+*   npm / yarn / pnpm
+
+### Configuration
+
+Copy `.env.local.example` to `.env.local`:
 
 ```bash
-npm  run  dev
-# or
-yarn  dev
-# or
-pnpm  dev
-# or
-bun  dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Running Locally
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 👥 Contributors
 
-## Directory structure:
+**Frontend / Full Stack Team:**
+*   **Sameep Shah**
+*   **Alex Morales**
 
-```/app```: This is where the main source code is stored for all of the pages that you can see on the website. A folder inside of this directory is a different route with the name of the folder. Ex: ```/mpc-result``` is a folder inside with ```page.tsx```, so when you go to [http://localhost:3000/mpc-result](http://localhost:3000/mpc-result), it will load that ```page.tsx``` in ```mpc-result/```.
+**Backend Team:**
+*   **Brae Ogle**
+*   **Alex Lee**
+*   **Madhavam Shahi**
+*   **Tristan Gonzales**
 
-```/components```: This is where the source code for the components is stored, ex: Navbar, UserMenu, Button, etc. to make sure our product is maintainable and extensible.
+## 📄 License
 
-```/constants```: This is where we store all the text or numbers that are constant and don't need to be changed or follow a certain pattern. Ex: If we want to change our product name in the future, we won't have to find all of the different times we have written our old product name, we just have to edit the constant in the folder and it will change the name automatically throughout the website.
-
-```/lib```: This folder contains the API requests made using ```api.ts``` for getting updated data for the website.
+This project is open source.
