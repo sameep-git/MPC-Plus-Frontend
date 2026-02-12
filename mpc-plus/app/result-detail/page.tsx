@@ -271,7 +271,7 @@ function ResultDetailPageContent() {
   };
 
   const handleQuickDateRange = (range: string) => {
-    const today = new Date();
+    const today = new Date(selectedDate);
     let start: Date;
     let end = new Date(today);
 
