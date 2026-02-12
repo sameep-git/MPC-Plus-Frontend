@@ -102,7 +102,8 @@ export const mapBeamsToResults = (
             // Calculate absolute output using DOC factor if available
             let absoluteValue: string | number = '';
             if (docFactor && docFactor.docFactor) {
-                const absOutput = beam.relOutput * docFactor.docFactor;
+                // Formula: Abs = (1 + RelOutput/100) * DocFactor
+                const absOutput = (1 + beam.relOutput / 100) * docFactor.docFactor;
                 absoluteValue = absOutput.toFixed(4);
             }
 

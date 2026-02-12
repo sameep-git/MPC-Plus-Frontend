@@ -26,7 +26,9 @@ const MSD_ABS_MIN = 0.97;
 const MSD_ABS_MAX = 1.03;
 
 interface BeamEntry {
-    beamCheck: BeamCheckOption | null;
+    beamCheck: BeamCheckOption | null; // The currently selected check
+    allChecks: BeamCheckOption[];     // All checks available for this variant/date
+    selectedCheckId: string | null;   // ID of the selected check
     msdAbs: string;
     loading: boolean;
 }
@@ -129,7 +131,13 @@ export default function DocFactorSettings() {
 
             // Initialize all variants
             for (const v of beamVariants) {
-                entries[v.id] = { beamCheck: null, msdAbs: '', loading: true };
+                entries[v.id] = {
+                    beamCheck: null,
+                    allChecks: [],
+                    selectedCheckId: null,
+                    msdAbs: '',
+                    loading: true
+                };
             }
             setBeamEntries({ ...entries });
 
@@ -144,13 +152,18 @@ export default function DocFactorSettings() {
             for (const result of results) {
                 if (result.status === 'fulfilled') {
                     const { variantId, checks } = result.value;
+                    // Default to the LATEST check (last in array usually, but let's be safe)
+                    // API returns sorted by timestamp ascending, so last is latest.
+                    const latestCheck = checks.length > 0 ? checks[checks.length - 1] : null;
+
                     entries[variantId] = {
-                        beamCheck: checks.length > 0 ? checks[0] : null,
+                        beamCheck: latestCheck,
+                        allChecks: checks,
+                        selectedCheckId: latestCheck?.id || null,
                         msdAbs: '',
                         loading: false,
                     };
                 } else {
-                    // Find the variant ID from the failed promise (fallback: leave loading false)
                     console.error('Failed to fetch beam checks for a variant:', result.reason);
                 }
             }
@@ -177,14 +190,24 @@ export default function DocFactorSettings() {
         return `${y}-${m}-${day}`;
     };
 
+    // Helper: Format timestamp for dropdown
+    const formatTime = (isoString?: string) => {
+        if (!isoString) return '';
+        const date = new Date(isoString.endsWith('Z') ? isoString : `${isoString}Z`);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     // Compute DOC factor for a beam entry
     const computeDocFactor = (entry: BeamEntry): number | null => {
         if (!entry.beamCheck || !entry.msdAbs) return null;
         const msd = parseFloat(entry.msdAbs);
         if (isNaN(msd)) return null;
         const rel = entry.beamCheck.relOutput;
-        if (!rel || rel === 0 || isNaN(rel)) return null;
-        const doc = msd / rel;
+        if (rel === null || rel === undefined || isNaN(rel)) return null;
+        // Formula: DocFactor = MSD / (1 + RelOutput/100)
+        // MPC Rel Output is a percentage change (e.g. 1.8%). 
+        // We use (1 + 1.8/100) = 1.018 as the relative factor.
+        const doc = msd / (1 + rel / 100);
         if (!isFinite(doc) || isNaN(doc)) return null;
         return doc;
     };
@@ -203,6 +226,23 @@ export default function DocFactorSettings() {
             ...prev,
             [variantId]: { ...prev[variantId], msdAbs: value },
         }));
+    };
+
+    // Update Selected Beam Check
+    const updateSelectedCheck = (variantId: string, checkId: string) => {
+        setBeamEntries(prev => {
+            const entry = prev[variantId];
+            if (!entry) return prev;
+            const newCheck = entry.allChecks.find(c => c.id === checkId) || null;
+            return {
+                ...prev,
+                [variantId]: {
+                    ...entry,
+                    selectedCheckId: checkId,
+                    beamCheck: newCheck
+                }
+            };
+        });
     };
 
     // Get rows that are ready to save (non-empty, valid DOC)
@@ -493,6 +533,7 @@ export default function DocFactorSettings() {
                                                     const doc = entry ? computeDocFactor(entry) : null;
                                                     const msdOutOfRange = entry?.msdAbs ? !isMsdAbsInRange(entry.msdAbs) : false;
                                                     const isLoading = entry?.loading;
+                                                    const hasMultipleChecks = entry && entry.allChecks.length > 1;
 
                                                     return (
                                                         <tr
@@ -509,7 +550,25 @@ export default function DocFactorSettings() {
                                                                 {isLoading ? (
                                                                     <Loader2 className="w-3 h-3 animate-spin" />
                                                                 ) : hasCheck ? (
-                                                                    <span>{entry.beamCheck!.relOutput.toFixed(4)}</span>
+                                                                    hasMultipleChecks ? (
+                                                                        <Select
+                                                                            value={entry.selectedCheckId || ''}
+                                                                            onValueChange={(val) => updateSelectedCheck(v.id, val)}
+                                                                        >
+                                                                            <SelectTrigger className="h-8 w-30 text-xs">
+                                                                                <SelectValue placeholder="Select check" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {entry.allChecks.map(check => (
+                                                                                    <SelectItem key={check.id} value={check.id}>
+                                                                                        {formatTime(check.timestamp)} - {check.relOutput.toFixed(4)}
+                                                                                    </SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    ) : (
+                                                                        <span>{entry.beamCheck!.relOutput.toFixed(4)}</span>
+                                                                    )
                                                                 ) : (
                                                                     <span className="text-gray-400 italic text-xs">No data</span>
                                                                 )}
