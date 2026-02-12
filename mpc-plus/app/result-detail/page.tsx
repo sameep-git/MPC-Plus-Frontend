@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, generateReport, getImageUrl, type DocFactor } from '../../lib/api';
+import { fetchUser, handleApiError, approveBeams, approveGeoChecks, fetchDocFactors, fetchBeamTypes, generateReport, getImageUrl, type DocFactor } from '../../lib/api';
 import {
   Navbar,
   Button,
@@ -223,6 +223,7 @@ function ResultDetailPageContent() {
   const [reportStartDate, setReportStartDate] = useState<Date>(() => new Date());
   const [reportEndDate, setReportEndDate] = useState<Date>(() => new Date());
   const [reportSelectedChecks, setReportSelectedChecks] = useState<Set<string>>(new Set());
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // --- Effects ---
   useEffect(() => {
@@ -278,17 +279,55 @@ function ResultDetailPageContent() {
   };
 
   // --- Report Helpers ---
-  const availableReportChecks = useMemo(() => [
-    ...beamResults.map(b => ({ id: b.id, name: b.name, type: 'beam' as const })),
-    ...geoResults.map(g => ({ id: g.id, name: g.name, type: 'geo' as const }))
-  ], [beamResults, geoResults]);
+  // Build available report checks using type-based IDs (matching calendar page & backend)
+  const [availableReportChecks, setAvailableReportChecks] = useState<{ id: string; name: string; type: 'beam' | 'geo' }[]>([]);
 
   useEffect(() => {
-    if (availableReportChecks.length > 0) {
-      // Default report selection: all
-      setReportSelectedChecks(new Set(availableReportChecks.map(c => c.id)));
+    const loadChecks = async () => {
+      // Static geometry checks (same as calendar page)
+      const geoChecks: { id: string; name: string; type: 'geo' }[] = [
+        { id: 'geo-isocenter', name: 'IsoCenter Group', type: 'geo' },
+        { id: 'geo-collimation', name: 'Collimation Group', type: 'geo' },
+        { id: 'geo-gantry', name: 'Gantry Group', type: 'geo' },
+        { id: 'geo-couch', name: 'Enhanced Couch Group', type: 'geo' },
+        { id: 'geo-mlc-a', name: 'MLC Leaves A', type: 'geo' },
+        { id: 'geo-mlc-b', name: 'MLC Leaves B', type: 'geo' },
+        { id: 'geo-mlc-offsets', name: 'MLC Offsets', type: 'geo' },
+        { id: 'geo-backlash-a', name: 'Backlash Leaves A', type: 'geo' },
+        { id: 'geo-backlash-b', name: 'Backlash Leaves B', type: 'geo' },
+        { id: 'geo-jaws', name: 'Jaws Group', type: 'geo' },
+        { id: 'geo-jaws-parallelism', name: 'Jaws Parallelism', type: 'geo' },
+      ];
+
+      // Dynamic beam checks from API
+      let beamChecks: { id: string; name: string; type: 'beam' }[] = [];
+      try {
+        const types = await fetchBeamTypes();
+        if (types && types.length > 0) {
+          beamChecks = types.map(t => ({
+            id: `beam-${t}`,
+            name: `Beam Check (${t})`,
+            type: 'beam'
+          }));
+        } else {
+          const defaults = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
+          beamChecks = defaults.map(t => ({ id: `beam-${t}`, name: `Beam Check (${t})`, type: 'beam' }));
+        }
+      } catch (e) {
+        console.error('Failed to fetch beam types for report:', e);
+        const defaults = ['6x', '6xFFF', '10x', '10xFFF', '15x', '6e', '9e', '12e', '16e', '20e'];
+        beamChecks = defaults.map(t => ({ id: `beam-${t}`, name: `Beam Check (${t})`, type: 'beam' }));
+      }
+
+      const allChecks = [...beamChecks, ...geoChecks];
+      setAvailableReportChecks(allChecks);
+      setReportSelectedChecks(new Set(allChecks.map(c => c.id)));
+    };
+
+    if (isReportModalOpen) {
+      loadChecks();
     }
-  }, [availableReportChecks]);
+  }, [isReportModalOpen]);
 
   // Helpers for Select All
   const isAllChecksSelected = availableReportChecks.length > 0 && reportSelectedChecks.size === availableReportChecks.length;
@@ -381,6 +420,8 @@ function ResultDetailPageContent() {
     if (!machineId) return;
 
     try {
+      setIsGeneratingReport(true);
+
       // Create a local date string YYYY-MM-DD
       const formatDateStr = (d: Date) => {
         const year = d.getFullYear();
@@ -389,21 +430,26 @@ function ResultDetailPageContent() {
         return `${year}-${month}-${day}`;
       };
 
-      const start = formatDateStr(reportStartDate);
-      const end = formatDateStr(reportEndDate);
+      // Single day — use selectedDate for both start and end
+      const dateStr = formatDateStr(selectedDate);
 
       const blob = await generateReport({
-        startDate: start,
-        endDate: end,
+        startDate: dateStr,
+        endDate: dateStr,
         machineId: machineId,
         selectedChecks: Array.from(reportSelectedChecks)
       });
+
+      // Determine correct extension based on response content type
+      const isZip = blob.type === 'application/zip' || blob.type === 'application/x-zip-compressed';
+      const ext = isZip ? 'zip' : 'pdf';
+      const fileName = `MPC_Report_${machineId}_${dateStr}.${ext}`;
 
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `MPC_Report_${machineId}_${start}_to_${end}.pdf`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -413,6 +459,8 @@ function ResultDetailPageContent() {
     } catch (err) {
       console.error('Failed to generate report', err);
       alert('Failed to generate report: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsGeneratingReport(false);
     }
   };
 
