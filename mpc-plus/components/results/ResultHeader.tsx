@@ -73,16 +73,12 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
 
                 {(() => {
-                    // Only beam checks are accepted.
-                    const beams = availableReportChecks.filter(c => c.type === 'beam');
-                    // Check if ALL beams are accepted
-                    const allAccepted = beams.length > 0 && beams.every(b => {
-                        const res = beamResults.find(cr => cr.id === b.id);
-                        return !!res?.approvedBy;
-                    });
+                    // Check if ALL displayed beams are accepted
+                    const hasBeams = beamResults.length > 0;
+                    const allAccepted = hasBeams && beamResults.every(b => !!b.approvedBy);
 
                     if (allAccepted) {
-                        const firstAccepted = beamResults.find(cr => cr.id === beams[0].id);
+                        const firstAccepted = beamResults[0];
                         const formatTime = (d?: string) => {
                             if (!d) return '';
                             const utc = d.endsWith('Z') ? d : `${d}Z`;
