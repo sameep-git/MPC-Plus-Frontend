@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, X, ImageOff } from 'lucide-react';
 import { Button, Card } from '../ui';
 
@@ -39,6 +39,15 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ images, onClose }) => 
     React.useEffect(() => {
         setCurrentIndex(0);
         setImgError(new Set());
+    }, [images]);
+
+    // Preload all images so navigation between them is instant
+    useEffect(() => {
+        images.forEach((img) => {
+            const preload = new Image();
+            preload.crossOrigin = 'anonymous';
+            preload.src = img.url;
+        });
     }, [images]);
 
     if (images.length === 0) {
@@ -102,6 +111,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ images, onClose }) => 
                     <img
                         src={current.url}
                         alt={current.label}
+                        crossOrigin="anonymous"
                         className="max-w-full max-h-[480px] object-contain"
                         onError={() => handleImageError(currentIndex)}
                     />

@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronDown } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { UI_CONSTANTS, USER_MENU_ACTIONS } from '../../constants';
 import {
   DropdownMenu,
@@ -19,7 +20,13 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ user }: UserMenuProps) {
+  const router = useRouter();
+
   const handleMenuAction = (action: string) => {
+    if (action === USER_MENU_ACTIONS.SETTINGS) {
+      router.push('/settings');
+      return;
+    }
     console.log(`User action: ${action}`);
   };
 
@@ -60,22 +67,8 @@ export function UserMenu({ user }: UserMenuProps) {
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem onClick={() => handleMenuAction(USER_MENU_ACTIONS.PROFILE)} className="cursor-pointer">
-          Profile
-        </DropdownMenuItem>
-
         <DropdownMenuItem onClick={() => handleMenuAction(USER_MENU_ACTIONS.SETTINGS)} className="cursor-pointer">
           Settings
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onClick={() => handleMenuAction(USER_MENU_ACTIONS.NOTIFICATIONS)} className="cursor-pointer">
-          Notifications
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onClick={() => handleMenuAction(USER_MENU_ACTIONS.HELP)} className="cursor-pointer">
-          Help & Support
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

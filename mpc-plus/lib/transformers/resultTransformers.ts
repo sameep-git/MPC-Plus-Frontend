@@ -102,7 +102,8 @@ export const mapBeamsToResults = (
             // Calculate absolute output using DOC factor if available
             let absoluteValue: string | number = '';
             if (docFactor && docFactor.docFactor) {
-                const absOutput = beam.relOutput * docFactor.docFactor;
+                // Formula: Abs = (1 + RelOutput/100) * DocFactor
+                const absOutput = (1 + beam.relOutput / 100) * docFactor.docFactor;
                 absoluteValue = absOutput.toFixed(4);
             }
 
@@ -172,7 +173,7 @@ export const mapGeoCheckToResults = (gc: GeoCheck, thresholds: Threshold[] = [])
                 value: def.value ?? '',
                 thresholds: thresholdVal,
                 // Or we could return threshold in metadata? For now leave empty as user only asked for Pass/Fail metric.
-                absoluteValue: def.value != null ? Math.abs(def.value).toFixed(3) : '',
+                absoluteValue: '',
                 status: backendStatus.toLowerCase() as 'pass' | 'fail' | 'warning'
             });
 

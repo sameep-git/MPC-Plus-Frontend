@@ -77,7 +77,17 @@ function ResultDetailPageContent() {
     });
   }, [selectedDate]);
 
-  const { data: graphData, beams: allBeams, geoChecks: allGeoChecks, loading: dataLoading, error: dataError, refresh } = useGraphData(graphDateRange.start, graphDateRange.end, machineId);
+  // Graph Data (Visualization only)
+  const { data: graphData } = useGraphData(graphDateRange.start, graphDateRange.end, machineId);
+
+  // Table Data (Locked to selected date)
+  const {
+    beams: allBeams,
+    geoChecks: allGeoChecks,
+    loading: dataLoading,
+    error: dataError,
+    refresh
+  } = useGraphData(selectedDate, selectedDate, machineId);
 
   // Fetch DOC factors for this machine
   useEffect(() => {
@@ -262,7 +272,7 @@ function ResultDetailPageContent() {
   };
 
   const handleQuickDateRange = (range: string) => {
-    const today = new Date();
+    const today = new Date(selectedDate);
     let start: Date;
     let end = new Date(today);
 
@@ -393,11 +403,12 @@ function ResultDetailPageContent() {
         await approveBeams(beamsToApprove, user.name || user.id);
       }
 
-      // 2. Approve Geo Checks
-      // We approve the active GeoCheck if it exists
-      const selectedGeoCheck = dayGeoChecks[activeCheckIndex];
-      if (selectedGeoCheck && !selectedGeoCheck.approvedBy) {
-        await approveGeoChecks([selectedGeoCheck.id], user.name || user.id);
+      // 2. Approve ALL Geo Checks for the current day
+      const geoIdsToApprove = dayGeoChecks
+        .filter(gc => !gc.approvedBy)
+        .map(gc => gc.id);
+      if (geoIdsToApprove.length > 0) {
+        await approveGeoChecks(geoIdsToApprove, user.name || user.id);
       }
 
       setIsSignOffModalOpen(false);
@@ -656,7 +667,7 @@ function ResultDetailPageContent() {
                       metrics={currentItem.metrics}
                       selectedMetrics={new Set()}
                       onToggleMetric={() => { }} // No graphing in modal
-                      showAbsolute={true}
+                      showAbsolute={currentItem.id.startsWith('beam-')}
                     />
                   </div>
                 </div>
