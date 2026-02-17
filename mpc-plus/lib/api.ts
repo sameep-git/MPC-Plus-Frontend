@@ -39,28 +39,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 
 /**
- * Image storage configuration.
- *
- * NEXT_PUBLIC_STORAGE_URL — Optional. If set, images are fetched directly from
- *   storage (e.g. MinIO or Supabase Storage public URL). The image path is
- *   appended to this base URL.
- *   Example (MinIO):    http://localhost:9000/beam-images
- *   Example (Supabase): https://<project>.supabase.co/storage/v1/object/public/beam-images
- *
- * If NEXT_PUBLIC_STORAGE_URL is NOT set, images are fetched via the backend
- * proxy at GET /api/image?path=<path>. The backend decides whether to route
- * to MinIO or Supabase based on its own configuration.
- */
-const STORAGE_URL = process.env.NEXT_PUBLIC_STORAGE_URL || '';
-
-/**
  * Construct a URL to fetch a beam check image.
  *
  * If the path is already a full URL (starts with http:// or https://),
- * it is returned as-is (the DB may store complete Supabase Storage URLs).
+ * it is returned as-is.
  *
- * When NEXT_PUBLIC_STORAGE_URL is set → builds a direct storage URL.
- * Otherwise → proxies through the backend at /api/image?path=<path>.
+ * Otherwise, serves from the backend's static files (wwwroot/images/).
  */
 export const getImageUrl = (imagePath: string): string => {
   // Sanitize: trim whitespace and trailing backslashes (JSON escaping artifacts)
@@ -71,14 +55,11 @@ export const getImageUrl = (imagePath: string): string => {
     return cleanPath;
   }
 
-  if (STORAGE_URL) {
-    // Direct storage access (MinIO or Supabase public bucket)
-    const base = STORAGE_URL.replace(/\/$/, '');
-    return `${base}/${cleanPath}`;
-  }
-  // Backend proxy (default — backend routes to MinIO or Supabase internally)
-  const base = API_BASE.replace(/\/$/, '');
-  return `${base}/image?path=${encodeURIComponent(cleanPath)}`;
+  // Serve from backend static files (wwwroot/images/...)
+  // API_BASE may include /api suffix (e.g. http://localhost:5132/api)
+  // but static files are served at the server root, so strip /api
+  const origin = API_BASE.replace(/\/api\/?$/, '');
+  return `${origin}/${cleanPath.replace(/^\//, '')}`;
 };
 
 const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
