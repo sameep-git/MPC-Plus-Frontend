@@ -333,6 +333,7 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
                             domain={yAxisDomain}
                             stroke="#6b7280"
                             style={{ fontSize: '12px' }}
+                            tickFormatter={(value: number) => value.toFixed(3)}
                         />
                         <Tooltip
                             contentStyle={{
@@ -340,6 +341,7 @@ export const GraphSection: React.FC<GraphSectionProps> = ({
                                 border: '1px solid #e5e7eb',
                                 borderRadius: '8px'
                             }}
+                            formatter={(value: number) => value.toFixed(3)}
                         />
                         <>
                             {/* Top threshold shading */}
